@@ -4,6 +4,8 @@
 
 # automate-merged-pr-check
 
+- `Ctrl + click` to read the [docs](https://jhauga.github.io/automate-merged-pr-check/)
+
 Helps you be a responsible contributor: an AI coding assistant writes an automated, scheduled test that keeps checking that a merged pull request still works as expected, and that its documentation still works as documented.
 
 You contributed something, it was merged, and the repository moved on. `auto-check` turns that pull request into a check that runs on its own, on a schedule, against the newest commit of the base branch. When the change stops working, you hear about it, with a report that says what broke and what changed since the last time it passed.
