@@ -16,6 +16,14 @@ import {
   removeLocalWorktree,
 } from '../lib/repo.mjs';
 
+// Git for Windows turns core.autocrlf on for the whole machine, and GitHub's
+// Windows runners keep it on. Every git call in this file runs with it on, on
+// every platform, so the tool must still check files out as the repository
+// stores them.
+process.env.GIT_CONFIG_COUNT = '1';
+process.env.GIT_CONFIG_KEY_0 = 'core.autocrlf';
+process.env.GIT_CONFIG_VALUE_0 = 'true';
+
 let base;
 let work;
 let bare;
@@ -90,6 +98,22 @@ test('a managed clone tracks the base branch tip and discards local changes', ()
 
   const next = publish('Bump the version', 'src/app.js', 'export const version = 2;\n');
   assert.equal(refreshManagedClone({ dir, url: upstreamUrl, baseRef: 'main' }).sha, next);
+});
+
+test('a clone made without the stored line endings is cloned again once, then kept', () => {
+  const dir = path.join(base, 'converted-check', 'repo');
+  mkdirSync(path.dirname(dir), { recursive: true });
+  run(base, 'clone', '-q', bare, dir);
+  assert.equal(readFileSync(path.join(dir, 'README.md'), 'utf8'), 'one\r\n');
+
+  refreshManagedClone({ dir, url: upstreamUrl, baseRef: 'main' });
+  assert.equal(readFileSync(path.join(dir, 'README.md'), 'utf8'), 'one\n');
+  assert.equal(run(dir, 'remote', 'get-url', 'origin'), upstreamUrl);
+  assert.equal(run(dir, 'config', '--local', '--get', 'core.eol'), 'lf');
+
+  run(dir, 'config', 'auto-check.probe', 'kept');
+  refreshManagedClone({ dir, url: upstreamUrl, baseRef: 'main' });
+  assert.equal(run(dir, 'config', '--local', '--get', 'auto-check.probe'), 'kept');
 });
 
 test('a sparse managed clone holds the root files and the named folders only, until it is made whole again', () => {
