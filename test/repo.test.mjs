@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
@@ -114,6 +114,28 @@ test('a clone made without the stored line endings is cloned again once, then ke
   run(dir, 'config', 'auto-check.probe', 'kept');
   refreshManagedClone({ dir, url: upstreamUrl, baseRef: 'main' });
   assert.equal(run(dir, 'config', '--local', '--get', 'auto-check.probe'), 'kept');
+});
+
+test('a clone and a worktree reached through another spelling of their folder are still recognized', () => {
+  const alias = `${base}-alias`;
+  symlinkSync(base, alias, 'junction');
+  try {
+    const dir = path.join(alias, 'alias-check', 'repo');
+    refreshManagedClone({ dir, url: upstreamUrl, baseRef: 'main' });
+    run(dir, 'config', 'auto-check.probe', 'kept');
+    refreshManagedClone({ dir, url: upstreamUrl, baseRef: 'main' });
+    assert.equal(run(dir, 'config', '--local', '--get', 'auto-check.probe'), 'kept');
+
+    const clone = cloneOf('alias-clone');
+    const before = state(clone);
+    const worktreeDir = path.join(alias, 'alias-check', 'worktree');
+    run(clone, 'worktree', 'add', '-q', '--detach', worktreeDir, 'HEAD');
+    removeLocalWorktree({ localRepo: clone, worktreeDir });
+    assert.equal(existsSync(worktreeDir), false);
+    assert.deepEqual(state(clone), before);
+  } finally {
+    unlinkSync(alias);
+  }
 });
 
 test('a sparse managed clone holds the root files and the named folders only, until it is made whole again', () => {
