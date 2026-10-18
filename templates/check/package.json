@@ -1,0 +1,10 @@
+{
+  "name": "auto-check-generated-check",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dependencies of one check that auto-check generated.",
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  }
+}

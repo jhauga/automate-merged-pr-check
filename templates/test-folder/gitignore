@@ -1,0 +1,12 @@
+# Written by auto-check as .gitignore when it creates this test folder.
+# Everything below is run-time data: delete it and the next run makes it again.
+repo/
+worktree/
+resolve-worktree/
+results/
+logs/
+schedule/
+node_modules/
+state.json
+.run.lock
+.env

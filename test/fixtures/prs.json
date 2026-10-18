@@ -1,0 +1,286 @@
+{
+  "acme/demo-app#101": {
+    "about": "Merged through a merge commit: a canvas extension with incidental root files and a lock file.",
+    "view": {
+      "number": 101,
+      "title": "Add a sample canvas extension",
+      "body": "Adds a canvas that draws a sample scene, and a small server that hosts it.",
+      "state": "MERGED",
+      "mergedAt": "2026-07-30T03:32:56Z",
+      "mergeCommit": { "oid": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0" },
+      "baseRefName": "main",
+      "headRefName": "sample-canvas",
+      "headRefOid": "b0a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1",
+      "headRepository": { "name": "demo-app" },
+      "headRepositoryOwner": { "login": "jane-doe" },
+      "isCrossRepository": true,
+      "changedFiles": 9,
+      "files": [
+        { "path": ".codespellrc", "additions": 2, "deletions": 1 },
+        { "path": ".github/plugin/marketplace.json", "additions": 6, "deletions": 0 },
+        { "path": "extensions/sample-canvas/README.md", "additions": 60, "deletions": 0 },
+        { "path": "extensions/sample-canvas/copilot-extension.json", "additions": 4, "deletions": 0 },
+        { "path": "extensions/sample-canvas/extension.mjs", "additions": 210, "deletions": 0 },
+        { "path": "extensions/sample-canvas/game/index.html", "additions": 40, "deletions": 0 },
+        { "path": "extensions/sample-canvas/game/app.js", "additions": 380, "deletions": 0 },
+        { "path": "extensions/sample-canvas/game/styles.css", "additions": 90, "deletions": 0 },
+        { "path": "extensions/sample-canvas/package-lock.json", "additions": 900, "deletions": 0 }
+      ],
+      "comments": [],
+      "closedAt": "2026-07-30T03:32:56Z",
+      "url": "https://github.com/acme/demo-app/pull/101",
+      "closingIssuesReferences": [{ "number": 12 }]
+    }
+  },
+  "acme/demo-app#102": {
+    "about": "Closed, then landed by a commit GitHub recorded as closing it: an install guide.",
+    "view": {
+      "number": 102,
+      "title": "INSTALL.md: add build steps",
+      "body": "Documents how to build the app from source.",
+      "state": "CLOSED",
+      "mergedAt": null,
+      "mergeCommit": null,
+      "baseRefName": "main",
+      "headRefName": "build-steps",
+      "headRefOid": "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2",
+      "headRepository": { "name": "demo-app" },
+      "headRepositoryOwner": { "login": "jane-doe" },
+      "isCrossRepository": true,
+      "changedFiles": 1,
+      "files": [{ "path": "docs/INSTALL.md", "additions": 48, "deletions": 2 }],
+      "comments": [{ "body": "Thanks!", "createdAt": "2026-03-31T14:50:19Z" }],
+      "closedAt": "2026-03-31T14:50:19Z",
+      "url": "https://github.com/acme/demo-app/pull/102",
+      "closingIssuesReferences": []
+    },
+    "landing": {
+      "closer": { "sha": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1", "message": "INSTALL.md: add build steps", "at": "2026-03-31T14:50:18Z" },
+      "referenced": [
+        { "sha": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1", "message": "INSTALL.md: add build steps", "at": "2026-03-31T14:50:18Z" }
+      ]
+    },
+    "onBase": { "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1" },
+    "diff": "diff --git a/docs/INSTALL.md b/docs/INSTALL.md\n--- a/docs/INSTALL.md\n+++ b/docs/INSTALL.md\n@@ -10,2 +10,6 @@\n+## Build from source\n+\n+```sh\n+./configure\n+make\n+```\n"
+  },
+  "acme/demo-app#103": {
+    "about": "Open: a command-line change spread over several top-level folders.",
+    "view": {
+      "number": 103,
+      "title": "Add a --verbose flag",
+      "body": "Prints each step when --verbose is set.",
+      "state": "OPEN",
+      "mergedAt": null,
+      "mergeCommit": null,
+      "baseRefName": "main",
+      "headRefName": "verbose-flag",
+      "headRefOid": "e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3",
+      "headRepository": { "name": "demo-app" },
+      "headRepositoryOwner": { "login": "jane-doe" },
+      "isCrossRepository": true,
+      "changedFiles": 3,
+      "files": [
+        { "path": "bin/demo.js", "additions": 12, "deletions": 1 },
+        { "path": "src/args.js", "additions": 30, "deletions": 4 },
+        { "path": "test/args.test.js", "additions": 25, "deletions": 0 }
+      ],
+      "comments": [],
+      "closedAt": null,
+      "url": "https://github.com/acme/demo-app/pull/103",
+      "closingIssuesReferences": []
+    }
+  },
+  "acme/demo-app#104": {
+    "about": "Closed without landing: the only referencing commit lives on a fork.",
+    "view": {
+      "number": 104,
+      "title": "Try a different cache",
+      "body": "",
+      "state": "CLOSED",
+      "mergedAt": null,
+      "mergeCommit": null,
+      "baseRefName": "main",
+      "headRefName": "cache-experiment",
+      "headRefOid": "f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4",
+      "headRepository": { "name": "demo-app" },
+      "headRepositoryOwner": { "login": "jane-doe" },
+      "isCrossRepository": true,
+      "changedFiles": 1,
+      "files": [{ "path": "src/cache.js", "additions": 40, "deletions": 10 }],
+      "comments": [{ "body": "Closing in favor of another approach.", "createdAt": "2026-05-02T09:00:00Z" }],
+      "closedAt": "2026-05-02T09:00:00Z",
+      "url": "https://github.com/acme/demo-app/pull/104",
+      "closingIssuesReferences": []
+    },
+    "landing": {
+      "closer": null,
+      "referenced": [{ "sha": "0404040404040404040404040404040404040404", "message": "wip: cache experiment (#104)", "at": "2026-05-01T09:00:00Z" }]
+    },
+    "onBase": {}
+  },
+  "acme/demo-app#105": {
+    "about": "Closed, then landed as a commit a maintainer named in a comment.",
+    "view": {
+      "number": 105,
+      "title": "Fix the date format",
+      "body": "",
+      "state": "CLOSED",
+      "mergedAt": null,
+      "mergeCommit": null,
+      "baseRefName": "main",
+      "headRefName": "date-format",
+      "headRefOid": "0505050505050505050505050505050505050505",
+      "headRepository": { "name": "demo-app" },
+      "headRepositoryOwner": { "login": "jane-doe" },
+      "isCrossRepository": true,
+      "changedFiles": 1,
+      "files": [{ "path": "src/dates.js", "additions": 3, "deletions": 3 }],
+      "comments": [
+        { "body": "Looks good.", "createdAt": "2026-06-01T10:00:00Z" },
+        { "body": "Merged as c0ffee1 with a small wording change. Thanks!", "createdAt": "2026-06-02T10:00:00Z" }
+      ],
+      "closedAt": "2026-06-02T10:00:00Z",
+      "url": "https://github.com/acme/demo-app/pull/105",
+      "closingIssuesReferences": []
+    },
+    "landing": { "closer": null, "referenced": [] },
+    "onBase": { "c0ffee1": "c0ffee1234567890abcdef1234567890abcdef12" }
+  },
+  "acme/demo-app#106": {
+    "about": "Merged documentation without install steps.",
+    "view": {
+      "number": 106,
+      "title": "Document the report options",
+      "body": "",
+      "state": "MERGED",
+      "mergedAt": "2026-06-10T12:00:00Z",
+      "mergeCommit": { "oid": "0606060606060606060606060606060606060606" },
+      "baseRefName": "main",
+      "headRefName": "report-docs",
+      "headRefOid": "6060606060606060606060606060606060606060",
+      "headRepository": { "name": "demo-app" },
+      "headRepositoryOwner": { "login": "acme" },
+      "isCrossRepository": false,
+      "changedFiles": 2,
+      "files": [
+        { "path": "docs/usage.md", "additions": 40, "deletions": 5 },
+        { "path": "README.md", "additions": 8, "deletions": 2 }
+      ],
+      "comments": [],
+      "closedAt": "2026-06-10T12:00:00Z",
+      "url": "https://github.com/acme/demo-app/pull/106",
+      "closingIssuesReferences": []
+    },
+    "diff": "diff --git a/docs/usage.md b/docs/usage.md\n--- a/docs/usage.md\n+++ b/docs/usage.md\n@@ -1,2 +1,4 @@\n+## Report options\n+\n+```json\n+{ \"install\": false }\n+```\n"
+  },
+  "acme/demo-app#107": {
+    "about": "Merged code and documentation in similar measure.",
+    "view": {
+      "number": 107,
+      "title": "Add a weekly report",
+      "body": "",
+      "state": "MERGED",
+      "mergedAt": "2026-06-20T12:00:00Z",
+      "mergeCommit": { "oid": "0707070707070707070707070707070707070707" },
+      "baseRefName": "main",
+      "headRefName": "weekly-report",
+      "headRefOid": "7070707070707070707070707070707070707070",
+      "headRepository": { "name": "demo-app" },
+      "headRepositoryOwner": { "login": "acme" },
+      "isCrossRepository": false,
+      "changedFiles": 2,
+      "files": [
+        { "path": "src/report.js", "additions": 60, "deletions": 0 },
+        { "path": "docs/reporting.md", "additions": 50, "deletions": 0 }
+      ],
+      "comments": [],
+      "closedAt": "2026-06-20T12:00:00Z",
+      "url": "https://github.com/acme/demo-app/pull/107",
+      "closingIssuesReferences": []
+    },
+    "diff": "diff --git a/docs/reporting.md b/docs/reporting.md\n--- /dev/null\n+++ b/docs/reporting.md\n@@ -0,0 +1,2 @@\n+# Reporting\n+Reports run every Monday.\n"
+  },
+  "acme/demo-app#108": {
+    "about": "Closed, then landed by a commit that references it, with no closing event.",
+    "view": {
+      "number": 108,
+      "title": "Retry the sync job",
+      "body": "",
+      "state": "CLOSED",
+      "mergedAt": null,
+      "mergeCommit": null,
+      "baseRefName": "main",
+      "headRefName": "sync-retry",
+      "headRefOid": "0808080808080808080808080808080808080808",
+      "headRepository": { "name": "demo-app" },
+      "headRepositoryOwner": { "login": "jane-doe" },
+      "isCrossRepository": true,
+      "changedFiles": 1,
+      "files": [{ "path": "src/sync.js", "additions": 14, "deletions": 2 }],
+      "comments": [],
+      "closedAt": "2026-07-01T08:00:00Z",
+      "url": "https://github.com/acme/demo-app/pull/108",
+      "closingIssuesReferences": []
+    },
+    "landing": {
+      "closer": null,
+      "referenced": [
+        { "sha": "e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8", "message": "Retry the sync job (#108)", "at": "2026-07-01T07:59:00Z" },
+        { "sha": "0480480480480480480480480480480480480480", "message": "wip retry (#108)", "at": "2026-06-30T07:59:00Z" }
+      ]
+    },
+    "onBase": { "e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8": "e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8" }
+  },
+  "acme/demo-app#109": {
+    "about": "Merged with more files than gh pr view lists, so intake pages through all of them.",
+    "view": {
+      "number": 109,
+      "title": "Split the parser",
+      "body": "",
+      "state": "MERGED",
+      "mergedAt": "2026-07-05T08:00:00Z",
+      "mergeCommit": { "oid": "0909090909090909090909090909090909090909" },
+      "baseRefName": "main",
+      "headRefName": "split-parser",
+      "headRefOid": "9090909090909090909090909090909090909090",
+      "headRepository": { "name": "demo-app" },
+      "headRepositoryOwner": { "login": "acme" },
+      "isCrossRepository": false,
+      "changedFiles": 3,
+      "files": [{ "path": "src/parser/index.js", "additions": 5, "deletions": 90 }],
+      "comments": [],
+      "closedAt": "2026-07-05T08:00:00Z",
+      "url": "https://github.com/acme/demo-app/pull/109",
+      "closingIssuesReferences": []
+    },
+    "allFiles": [
+      { "path": "src/parser/index.js", "additions": 5, "deletions": 90 },
+      { "path": "src/parser/tokens.js", "additions": 50, "deletions": 0 },
+      { "path": "src/parser/tree.js", "additions": 45, "deletions": 0 }
+    ]
+  },
+  "acme/demo-app#110": {
+    "about": "Merged documentation whose added lines carry install commands, though its name says nothing about installing.",
+    "view": {
+      "number": 110,
+      "title": "Explain how to get the CLI",
+      "body": "",
+      "state": "MERGED",
+      "mergedAt": "2026-07-08T08:00:00Z",
+      "mergeCommit": { "oid": "1010101010101010101010101010101010101010" },
+      "baseRefName": "main",
+      "headRefName": "cli-docs",
+      "headRefOid": "0101010101010101010101010101010101010101",
+      "headRepository": { "name": "demo-app" },
+      "headRepositoryOwner": { "login": "acme" },
+      "isCrossRepository": false,
+      "changedFiles": 1,
+      "files": [{ "path": "docs/getting-help.md", "additions": 12, "deletions": 0 }],
+      "comments": [],
+      "closedAt": "2026-07-08T08:00:00Z",
+      "url": "https://github.com/acme/demo-app/pull/110",
+      "closingIssuesReferences": []
+    },
+    "diff": "diff --git a/docs/getting-help.md b/docs/getting-help.md\n--- a/docs/getting-help.md\n+++ b/docs/getting-help.md\n@@ -1,2 +1,8 @@\n+## Set up the CLI\n+\n+```bash\n+npm install --global demo-app\n+demo-app --version\n+```\n"
+  }
+}

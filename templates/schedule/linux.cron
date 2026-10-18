@@ -1,0 +1,2 @@
+# auto-check {{name}}: scheduled check of a pull request, written by auto-check schedule install.
+{{cron}} cd "{{root}}" && mkdir -p logs && "{{node}}" "{{tool}}" run "{{root}}" {{args}} < /dev/null >> "logs/schedule.log" 2>&1

@@ -1,0 +1,31 @@
+<!--
+  Windows Sandbox configuration for checks that follow an install or build
+  procedure. run.mjs copies this file into its output folder, replaces the two
+  placeholders with absolute host folders, and starts it. The steps folder is
+  read-only inside the sandbox and holds run-steps.cmd. The script writes
+  steps.log and exit-code.txt into the output folder, which run.mjs waits for.
+-->
+<Configuration>
+  <VGpu>Disable</VGpu>
+  <Networking>Enable</Networking>
+  <AudioInput>Disable</AudioInput>
+  <VideoInput>Disable</VideoInput>
+  <ClipboardRedirection>Disable</ClipboardRedirection>
+  <PrinterRedirection>Disable</PrinterRedirection>
+  <MemoryInMB>4096</MemoryInMB>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>{{stepsFolder}}</HostFolder>
+      <SandboxFolder>C:\auto-check\steps</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>{{outputFolder}}</HostFolder>
+      <SandboxFolder>C:\auto-check\out</SandboxFolder>
+      <ReadOnly>false</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>cmd.exe /c C:\auto-check\steps\run-steps.cmd</Command>
+  </LogonCommand>
+</Configuration>

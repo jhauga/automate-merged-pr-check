@@ -1,0 +1,15 @@
+# auto-check: one run of one check, started by {{unitName}}.timer.
+[Unit]
+Description=auto-check {{name}}: scheduled check of a pull request
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{root}}
+ExecStartPre=/bin/mkdir -p "{{root}}/logs"
+StandardInput=null
+ExecStart="{{node}}" "{{tool}}" run "{{root}}" {{args}}
+StandardOutput=append:{{root}}/logs/schedule.log
+StandardError=append:{{root}}/logs/schedule.log
+TimeoutStartSec={{timeLimitMinutes}}min

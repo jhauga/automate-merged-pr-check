@@ -1,0 +1,11 @@
+# auto-check: timer for one check, installed as a systemd user unit by auto-check schedule install.
+[Unit]
+Description=Timer for auto-check {{name}}
+
+[Timer]
+OnCalendar={{onCalendar}}
+Persistent=true
+Unit={{unitName}}.service
+
+[Install]
+WantedBy=timers.target

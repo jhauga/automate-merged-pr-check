@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- auto-check: daily run of one check, installed under ~/Library/LaunchAgents by auto-check schedule install. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{{label}}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{node}}</string>
+    <string>{{tool}}</string>
+    <string>run</string>
+    <string>{{root}}</string>
+{{extraArguments}}
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{{root}}</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>{{hour}}</integer>
+    <key>Minute</key>
+    <integer>{{minute}}</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>{{root}}/logs/schedule.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{root}}/logs/schedule.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

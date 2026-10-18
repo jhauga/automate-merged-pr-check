@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Secrets
+.env
+
+# Scratch space and local editor helpers
+.tmp/
+task.bat
+*.code-workspace
+
+# send-email credential files; _default.js reads its password from an env var
+notify/config/accounts/*
+!notify/config/accounts/_default.js
+
+# Tracked even when a global ignore file skips dotfiles or lock files
+!.gitignore
+!.gitattributes
+!.env.example
+!.github/
+!package-lock.json

@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "auto-check settings",
+  "description": "Per-user settings for auto-check, read from the settings file in the user's configuration folder. Any setting left out takes its default.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["root", "assistant", "models", "notify", "schedule", "results", "repos", "assistants"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "root": {
+      "description": "Folder that holds the test folders. Empty means auto-check asks for one on its first run.",
+      "type": "string"
+    },
+    "assistant": {
+      "description": "Assistant that writes checks and proposes fixes.",
+      "$ref": "#/$defs/assistantName"
+    },
+    "models": {
+      "description": "Model names per assistant: generate writes checks, analyze proposes fixes, testDriver drives the subject under test and should be a low-cost model.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claude", "copilot", "codex"],
+      "properties": {
+        "claude": { "$ref": "#/$defs/modelSet" },
+        "copilot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["generate", "analyze", "testDriver"],
+          "properties": {
+            "generate": { "type": "string" },
+            "analyze": { "type": "string" },
+            "testDriver": { "type": "string" },
+            "testDriverAutoTier": {
+              "description": "Routing profile used when testDriver is auto.",
+              "enum": ["efficiency", "balance", "intelligence"]
+            },
+            "effort": { "$ref": "#/$defs/effort" }
+          }
+        },
+        "codex": { "$ref": "#/$defs/modelSet" }
+      }
+    },
+    "notify": {
+      "description": "Who hears about a check result, and when.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dryRun", "onFail", "onError", "onPass", "onRecover", "email", "sms", "webhook"],
+      "properties": {
+        "dryRun": {
+          "description": "Write each notification to notify.txt in the run's result folder instead of sending it.",
+          "type": "boolean"
+        },
+        "onFail": { "description": "Notify when a check fails.", "type": "boolean" },
+        "onError": { "description": "Notify when a check cannot run.", "type": "boolean" },
+        "onPass": { "description": "Notify on every passing run.", "type": "boolean" },
+        "onRecover": { "description": "Notify when a check passes again after failing.", "type": "boolean" },
+        "email": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "to", "from", "account", "smtp"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "to": { "type": "array", "items": { "$ref": "#/$defs/emailAddress" } },
+            "from": { "$ref": "#/$defs/emailAddress" },
+            "account": {
+              "description": "send-email account name: the module notify/config/accounts/<account>.js.",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]+$"
+            },
+            "smtp": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["passwordEnv"],
+              "properties": {
+                "service": {
+                  "description": "Well-known mail service name, used instead of host and port.",
+                  "type": "string"
+                },
+                "host": { "type": "string" },
+                "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                "secure": { "type": "boolean" },
+                "user": { "type": "string" },
+                "passwordEnv": {
+                  "description": "Name of the environment variable that holds the password.",
+                  "$ref": "#/$defs/envName"
+                }
+              }
+            }
+          }
+        },
+        "sms": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "provider", "to"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "provider": {
+              "description": "gateway sends to carrier email-to-text addresses through the email account.",
+              "enum": ["gateway"]
+            },
+            "to": { "type": "array", "items": { "$ref": "#/$defs/emailAddress" } }
+          }
+        },
+        "webhook": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "url", "format", "secretEnv"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "url": { "type": "string", "pattern": "^(https?://\\S+)?$" },
+            "format": {
+              "description": "json posts a JSON body; text posts plain text, which suits push services.",
+              "enum": ["json", "text"]
+            },
+            "secretEnv": {
+              "description": "Name of the environment variable that holds the shared secret.",
+              "$ref": "#/$defs/envName"
+            }
+          }
+        }
+      }
+    },
+    "schedule": {
+      "description": "When the operating system runs each check.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["windows", "macos", "linux"],
+      "properties": {
+        "windows": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schedule", "startTime", "interactive"],
+          "properties": {
+            "schedule": { "enum": ["MINUTE", "HOURLY", "DAILY", "WEEKLY", "MONTHLY"] },
+            "startTime": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+            "interactive": {
+              "description": "Run in the signed-in desktop session: always, never, or auto when a check drives a desktop app.",
+              "enum": ["auto", "always", "never"]
+            }
+          }
+        },
+        "macos": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hour", "minute"],
+          "properties": {
+            "hour": { "type": "integer", "minimum": 0, "maximum": 23 },
+            "minute": { "type": "integer", "minimum": 0, "maximum": 59 }
+          }
+        },
+        "linux": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cron", "unit"],
+          "properties": {
+            "cron": { "type": "string", "pattern": "^\\S+(\\s+\\S+){4}$" },
+            "unit": { "enum": ["systemd-user", "cron"] }
+          }
+        }
+      }
+    },
+    "results": {
+      "description": "Result folders each test keeps under its results folder.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keep"],
+      "properties": {
+        "keep": {
+          "description": "How many of the newest result folders to keep. The folders of the last pass and the last run are always kept.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      }
+    },
+    "repos": {
+      "description": "Local clone and remote names used when proposing and applying fixes.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["localRepo", "upstreamRemote", "originRemote", "branchPrefix"],
+      "properties": {
+        "localRepo": { "description": "Path to a local clone of the watched repository.", "type": "string" },
+        "upstreamRemote": { "$ref": "#/$defs/remoteName" },
+        "originRemote": { "$ref": "#/$defs/remoteName" },
+        "branchPrefix": { "type": "string", "pattern": "^[A-Za-z0-9._/-]*$" }
+      }
+    },
+    "assistants": {
+      "description": "Where each assistant reads skills and instructions, and how much it may do without asking.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claude", "copilot", "codex"],
+      "properties": {
+        "claude": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["skills", "instructions", "permissionMode"],
+          "properties": {
+            "skills": { "$ref": "#/$defs/skillsFolder" },
+            "instructions": { "$ref": "#/$defs/relativePath" },
+            "permissionMode": { "enum": ["bypass", "acceptEdits", "default"] }
+          }
+        },
+        "copilot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["skills", "instructions", "permissionMode"],
+          "properties": {
+            "skills": { "$ref": "#/$defs/skillsFolder" },
+            "instructions": { "$ref": "#/$defs/relativePath" },
+            "permissionMode": { "enum": ["allow-all-tools", "default"] }
+          }
+        },
+        "codex": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["skills", "instructions", "permissionMode"],
+          "properties": {
+            "skills": { "$ref": "#/$defs/skillsFolder" },
+            "instructions": { "$ref": "#/$defs/relativePath" },
+            "permissionMode": { "enum": ["workspace-write", "read-only", "danger-full-access", "default"] }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "assistantName": { "enum": ["claude", "copilot", "codex"] },
+    "relativePath": { "type": "string", "minLength": 1, "pattern": "^(?![/\\\\])[^:]+$" },
+    "skillsFolder": {
+      "description": "Relative folder whose last part is named skills. Mirror folders are replaced on every sync, so this rule keeps a typo from pointing the sync at a wider folder.",
+      "type": "string",
+      "pattern": "^(?![/\\\\])([^:]*/)?skills/?$"
+    },
+    "emailAddress": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$" },
+    "envName": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" },
+    "remoteName": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "modelSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generate", "analyze", "testDriver"],
+      "properties": {
+        "generate": { "type": "string" },
+        "analyze": { "type": "string" },
+        "testDriver": { "type": "string" },
+        "effort": { "$ref": "#/$defs/effort" }
+      }
+    },
+    "effort": {
+      "description": "Thinking effort passed to the assistant. Empty means the command's own default.",
+      "type": "string",
+      "pattern": "^(none|minimal|low|medium|high|xhigh|max)?$"
+    }
+  }
+}

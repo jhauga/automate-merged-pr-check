@@ -1,0 +1,55 @@
+{
+  "name": "automate-merged-pr-check",
+  "version": "1.0.0-alpha.0.0.0",
+  "description": "Helps you be a responsible contributor: an AI coding assistant writes an automated, scheduled test that keeps checking that a merged pull request still works as expected, and that its documentation still works as documented.",
+  "keywords": [
+    "cli",
+    "automation",
+    "testing",
+    "pull-requests",
+    "regression",
+    "scheduled-tasks",
+    "ai-agents",
+    "claude-code",
+    "github-copilot"
+  ],
+  "private": true,
+  "type": "module",
+  "bin": {
+    "auto-check": "bin/auto-check.mjs"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "prompts/",
+    "skills/",
+    "templates/",
+    "notify/config/accounts/_default.js",
+    "auto-check.config.schema.json",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node scripts/run-tests.mjs"
+  },
+  "author": "jhauga",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jhauga/automate-merged-pr-check.git"
+  },
+  "homepage": "https://jhauga.github.io/automate-merged-pr-check/",
+  "bugs": {
+    "url": "https://github.com/jhauga/automate-merged-pr-check/issues"
+  },
+  "dependencies": {
+    "@isocialpractice/send-email": "1.0.0",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "nodemailer": "^6.9.0"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,38 @@
+title: auto-check
+description: >-
+  Turns a merged pull request into a scheduled check that keeps proving the
+  change still works, and that its documentation still works as documented.
+url: https://jhauga.github.io
+baseurl: /automate-merged-pr-check
+
+remote_theme: just-the-docs/just-the-docs@v0.12.0
+plugins:
+  - jekyll-remote-theme
+
+logo: /assets/images/logo.svg
+favicon_ico: /assets/images/favicon.ico
+
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 3
+  tokenizer_separator: /[\s/]+/
+
+color_scheme: dark
+heading_anchors: true
+
+aux_links:
+  auto-check on GitHub:
+    - https://github.com/jhauga/automate-merged-pr-check
+aux_links_new_tab: true
+
+back_to_top: true
+back_to_top_text: Back to top
+
+footer_content: >-
+  auto-check, an MIT licensed command-line tool.
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor/

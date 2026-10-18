@@ -1,0 +1,151 @@
+import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { after, before, test } from 'node:test';
+import { defaults } from '../lib/config.mjs';
+import { DRY_RUN_FILE } from '../lib/notify/index.mjs';
+import { createPipeline } from '../lib/pipeline.mjs';
+import { runTest } from '../lib/runner.mjs';
+import { dayFolder } from '../lib/util/date.mjs';
+import { SLUG, fakes, makeTestFolder, readState, setMode } from './helpers/run-check.mjs';
+import { writeForm } from './helpers/form.mjs';
+
+let base;
+
+before(() => {
+  base = mkdtempSync(path.join(os.tmpdir(), 'auto-check-pipeline-'));
+});
+
+after(() => {
+  rmSync(base, { recursive: true, force: true });
+});
+
+function settings() {
+  const config = defaults();
+  config.notify.dryRun = true;
+  config.notify.email.enabled = true;
+  config.notify.sms.enabled = true;
+  return config;
+}
+
+test('a failure writes its report, notifies, and asks for a proposal once; a pass closes the report', async () => {
+  const { root, dir } = await makeTestFolder(base, 'pipeline');
+  writeForm(root, { findIssue: true, resolveIssue: true });
+  const config = settings();
+  const proposals = [];
+  const propose = async ({ open }) => {
+    proposals.push(open);
+    writeFileSync(path.join(root, open.proposedSolution), 'proposed');
+    return { proposedSolutionFile: path.join(root, open.proposedSolution) };
+  };
+  const afterRun = createPipeline({ deps: { propose } });
+  const run = (options = {}) => runTest({ testFolder: root, config, deps: { ...fakes().deps, afterRun }, ...options });
+  const day = `found-issue/${dayFolder(new Date())}`;
+  const notifyFile = (result) => path.join(result.resultDir, DRY_RUN_FILE);
+
+  const passed = await run();
+  assert.equal(passed.outcome, 'pass');
+  assert.equal(existsSync(notifyFile(passed)), false);
+
+  setMode(dir, 'fail');
+  const failed = await run();
+  assert.equal(failed.outcome, 'fail');
+  assert.deepEqual(failed.handled.lines, [
+    `Failure report: ${day}/found-issue.md`,
+    `Notification: dry run, email and sms written to ${path.relative(root, notifyFile(failed))}.`,
+    `Proposed solution: proposed-solution/${dayFolder(new Date())}/proposed-solution.prompt.md`,
+  ]);
+  const report = readFileSync(path.join(root, day, 'found-issue.md'), 'utf8');
+  assert.match(report, /^## Observed and expected\n\nAssertions that failed:\n\n- page: the greeting is printed\. Detail: goodbye$/m);
+  assert.match(report, /No commit touched the watched paths since the last pass/);
+  assert.match(report, /are the same as at the last pass\./);
+  const sent = readFileSync(notifyFile(failed), 'utf8');
+  assert.match(sent, /^email\nFrom: auto-check@example\.com\nTo: jane\.doe@example\.com\nSubject: auto-check: pipeline failed\n/);
+  assert.match(sent, new RegExp(`Failure report: ${day}/found-issue\\.md`));
+  assert.match(sent, /\nsms\n.*\n.*\nSubject: auto-check\n\nauto-check: pipeline failed: the greeting is printed\n/);
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0].foundIssue, `${day}/found-issue.md`);
+  assert.equal(proposals[0].proposedSolution, `proposed-solution/${dayFolder(new Date())}/proposed-solution.prompt.md`);
+  let state = readState(dir);
+  assert.equal(state.openResolution.foundIssue, `${day}/found-issue.md`);
+  assert.ok(state.lastNotifiedAt);
+  assert.deepEqual(JSON.parse(readFileSync(failed.resultFile, 'utf8')).followUp, failed.handled.lines);
+
+  const repeated = await run();
+  assert.deepEqual(repeated.handled.lines, [`Failure report: unchanged, ${day}/found-issue.md`, 'Notification: already notified for this failure.']);
+  assert.equal(existsSync(notifyFile(repeated)), false);
+  assert.equal(proposals.length, 1);
+
+  const simulated = await run({ simulateFail: 'black' });
+  assert.deepEqual(simulated.handled.lines, [
+    `Failure report: ${day}/found-issue-2.md`,
+    `Notification: dry run, email and sms written to ${path.relative(root, notifyFile(simulated))}.`,
+    'Proposed solution: not asked for a simulated failure. Run auto-check resolve with --propose to try it.',
+  ]);
+  assert.match(readFileSync(path.join(root, day, 'found-issue-2.md'), 'utf8'), /This failure was simulated with `--simulate-fail`/);
+  assert.match(readFileSync(notifyFile(simulated), 'utf8'), /Subject: \[simulated\] auto-check: pipeline failed/);
+  state = readState(dir);
+  assert.equal(state.openResolution.foundIssue, `${day}/found-issue.md`);
+  assert.equal(state.simulated.openResolution.foundIssue, `${day}/found-issue-2.md`);
+  assert.equal(state.consecutiveFailures, 2);
+
+  const simulatedAgain = await run({ simulateFail: 'black' });
+  assert.deepEqual(simulatedAgain.handled.lines, [`Failure report: unchanged, ${day}/found-issue-2.md`, 'Notification: already notified for this failure.']);
+  assert.equal(existsSync(notifyFile(simulatedAgain)), false);
+
+  setMode(dir, 'pass');
+  const recovered = await run();
+  assert.equal(recovered.decision.reason, 'recover');
+  assert.deepEqual(recovered.handled.lines, [
+    `Notification: dry run, email and sms written to ${path.relative(root, notifyFile(recovered))}.`,
+    `Failure report closed: ${day}/found-issue.md`,
+  ]);
+  assert.match(readFileSync(notifyFile(recovered), 'utf8'), /Subject: auto-check: pipeline passes again/);
+  assert.equal(readState(dir).openResolution, null);
+});
+
+test('without notification channels, a failure with Find Issue on still writes its report', async () => {
+  const { root, dir } = await makeTestFolder(base, 'quiet');
+  writeForm(root, { findIssue: true });
+  const afterRun = createPipeline({ deps: { propose: async () => { throw new Error('Resolve Issue is off'); } } });
+  setMode(dir, 'fail');
+  const result = await runTest({ testFolder: root, config: defaults(), deps: { ...fakes().deps, afterRun } });
+  assert.deepEqual(result.handled.lines, [
+    `Failure report: found-issue/${dayFolder(new Date())}/found-issue.md`,
+    'Notification: none sent, no notification channel is enabled.',
+  ]);
+  assert.match(readFileSync(path.join(root, 'found-issue', dayFolder(new Date()), 'found-issue.md'), 'utf8'), /The check has not passed since it was written/);
+});
+
+test('with the chain on, a proposal is followed by the fix branch and the pull request text', async () => {
+  const { root, dir } = await makeTestFolder(base, 'resolve-chain');
+  writeForm(root, { findIssue: true, resolveIssue: true, commitSolution: true, localCommit: true, remotePush: true, makePr: true });
+  const config = settings();
+  config.notify.email.enabled = false;
+  config.notify.sms.enabled = false;
+  const calls = [];
+  const afterRun = createPipeline({
+    deps: {
+      propose: async ({ open }) => ({ proposedSolutionFile: path.join(root, open.proposedSolution) }),
+      resolveIssue: async ({ open, push }) => {
+        calls.push(['issue', push]);
+        return { branch: 'resolve-issue-demo-app', commit: 'c0ffee0123456789', pushed: push, open: { ...open, branch: 'resolve-issue-demo-app', commit: 'c0ffee0123456789' } };
+      },
+      resolvePr: async ({ open }) => {
+        calls.push(['pr', open.branch]);
+        return { prUrl: null, pullRequestFile: path.join(root, 'proposed-solution', open.day, 'resolve', 'pull-request.md'), open: { ...open, issue: null } };
+      },
+    },
+  });
+  setMode(dir, 'fail');
+  const result = await runTest({ testFolder: root, config, deps: { ...fakes().deps, afterRun } });
+  const day = dayFolder(new Date());
+  assert.deepEqual(result.handled.lines.slice(-3), [
+    `Proposed solution: proposed-solution/${day}/proposed-solution.prompt.md`,
+    'Fix branch: resolve-issue-demo-app at c0ffee0, pushed to origin',
+    `Pull request: written to proposed-solution/${day}/resolve/pull-request.md`,
+  ]);
+  assert.deepEqual(calls, [['issue', true], ['pr', 'resolve-issue-demo-app']]);
+  assert.equal(readState(dir).openResolution.branch, 'resolve-issue-demo-app');
+});
