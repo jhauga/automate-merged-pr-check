@@ -4,6 +4,19 @@ All notable changes to this project are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-alpha.0.0.1] - 2026-10-18
+
+### Fixed
+
+- The code under test is checked out with the line endings its repository
+  stores, whatever the machine's git line-ending setting, so a check sees the
+  same files on Windows as on any other system. A managed clone made before
+  this change is cloned again once.
+- A managed clone or worktree reached through another spelling of its folder,
+  such as a Windows 8.3 short name or a linked folder, is recognized again: the
+  managed clone is no longer cloned again on every run, and the worktree of an
+  unmerged branch is removed cleanly, leaving the local clone as it was.
+
 ## [1.0.0-alpha.0.0.0] - 2026-10-18
 
 The first alpha of `auto-check`, a command-line tool that turns a merged pull
