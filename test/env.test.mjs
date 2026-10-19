@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { loadDotEnv, parseDotEnv } from '../lib/util/env.mjs';
+import { loadDotEnv, parseDotEnv, withoutVariables } from '../lib/util/env.mjs';
 
 test('.env text parses plain, quoted, exported, and commented lines', () => {
   const text = [
@@ -24,6 +24,15 @@ test('.env text parses plain, quoted, exported, and commented lines', () => {
     SINGLE: 'kept # as is',
     EMPTY: '',
   });
+});
+
+test('a child environment leaves out the named variables, without regard to case on Windows', () => {
+  const env = { PATH: 'bin', AUTO_CHECK_EMAIL_PASSWORD: 'placeholder-secret', Auto_Check_Smtp_Password: 'other-secret', KEEP: '1' };
+  const names = ['AUTO_CHECK_EMAIL_PASSWORD', 'AUTO_CHECK_SMTP_PASSWORD', null];
+  assert.deepEqual(withoutVariables(env, names, { platform: 'win32' }), { PATH: 'bin', KEEP: '1' });
+  assert.deepEqual(withoutVariables(env, names, { platform: 'linux' }), { PATH: 'bin', Auto_Check_Smtp_Password: 'other-secret', KEEP: '1' });
+  assert.equal(withoutVariables(env, []), env);
+  assert.equal(env.AUTO_CHECK_EMAIL_PASSWORD, 'placeholder-secret');
 });
 
 test('loading .env never overrides a variable that is already set', () => {

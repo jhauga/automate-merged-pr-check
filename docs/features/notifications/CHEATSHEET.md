@@ -42,6 +42,7 @@ With `secretEnv` set in the environment: `Authorization: Bearer <secret>`.
 | --- | --- | --- |
 | `notify.email.smtp.passwordEnv` | `AUTO_CHECK_SMTP_PASSWORD` | the environment, then `.env` beside the settings |
 | `notify.webhook.secretEnv` | `AUTO_CHECK_WEBHOOK_SECRET` | the same |
+| Password in `test-configuration.md` | the variable it names, such as `AUTO_CHECK_EMAIL_PASSWORD` | the environment, then the test folder's `.env` |
 
 `auto-check doctor` says whether each is set, never what it holds.
 
@@ -54,11 +55,27 @@ With `secretEnv` set in the environment: `Authorization: Bearer <secret>`.
 | `auto-check run --no-notify` | Run without notifying, whatever the settings say. |
 | `auto-check config set notify.dryRun true` | Write notifications to the result folder instead. |
 
-## Per check
+## Per test
+
+`test-configuration.md` decides first:
+
+| Send Notifications | Notify when Test | Fires on |
+| --- | --- | --- |
+| `false` | ignored | nothing |
+| `true` | `fail` | a failure, a run that could not happen |
+| `true` | `pass` | every pass, a recovery |
+| `true` | `both` | all of them |
+
+| Account Configuration | Sends |
+| --- | --- |
+| Email and Password set | email from and to that address; texts through it |
+| Email `null` | on the channels your settings turn on |
+
+Without that file, the check's `check.config.json` can override single settings:
 
 ```json
 "notify": "inherit"
 "notify": { "onPass": true }
 ```
 
-In that check's `check.config.json`. What you leave out keeps your settings.
+What you leave out keeps your settings.

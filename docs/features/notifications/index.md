@@ -1,7 +1,7 @@
 ---
 title: Notifications
 parent: Features
-nav_order: 7
+nav_order: 8
 has_children: true
 ---
 
@@ -21,6 +21,29 @@ A scheduled run happens while you are asleep. Notifications are how you hear abo
 
 A repeat of the open failure never notifies again, however many nights it fails. A check can override any of these in its own `check.config.json` by replacing `"notify": "inherit"`.
 
+## One test's own rules
+
+A test folder's [test-configuration.md](../test-configuration/index.md) decides for that test, over both your settings and `check.config.json`:
+
+| Send Notifications | Notify when Test | `onFail` | `onError` | `onPass` | `onRecover` |
+| --- | --- | --- | --- | --- | --- |
+| `false` | ignored | off | off | off | off |
+| `true` | `fail` | on | on | off | off |
+| `true` | `pass` | off | off | on | on |
+| `true` | `both` | on | on | on | on |
+
+With Email and Password set under Account Configuration, the test sends email from that address to that address, and texts through the same account:
+
+```md
+- **Send Notifications**: true
+  - **Notify when Test**: fail
+  - **Account Configuration**:
+    - **Email**: jane.doe@example.com
+    - **Password**: %AUTO_CHECK_EMAIL_PASSWORD%
+```
+
+The mail server is the one known for the address's domain, else `notify.email.smtp` from your settings. Password names an environment variable, which the test folder's `.env` can hold. With Email left `null`, the test uses the channels your settings turn on.
+
 ## What a message says
 
 ```text
@@ -39,7 +62,7 @@ The message names paths on your machine, so it goes only to the channels you con
 
 ## Email
 
-Email goes through the `@isocialpractice/send-email` engine and the account module `notify/config/accounts/_default.js`, which holds no values: it reads the server and user from your settings, and the password from the environment variable the settings name.
+Email goes through the `@isocialpractice/send-email` engine and the account module `notify/config/accounts/_default.js`, which holds no values. Right before a message goes out, the tool fills it in memory with the server and the sign-in: a test's own account from its `test-configuration.md`, or the server and user from your settings with the password from the environment variable the settings name. Nothing about the account is written anywhere.
 
 ```json
 "email": {
@@ -89,7 +112,7 @@ auto-check notify test --dry-run
 auto-check notify test
 ```
 
-`--dry-run` prints what each enabled channel would receive and sends nothing. Without it, a sample goes out on every enabled channel.
+`--dry-run` prints what each enabled channel would receive and sends nothing. Without it, a sample goes out on every enabled channel. Inside a test folder, both follow its `test-configuration.md`: they say so when it turns notifications off, and send through its account when it has one.
 
 To watch the whole failure path without sending anything, set `notify.dryRun` and simulate a failure:
 
@@ -105,6 +128,7 @@ With `notify.dryRun` on, every scheduled run writes its notifications to `notify
 
 | Check | How |
 | --- | --- |
+| Does the test turn them off? | `auto-check context validate test-configuration.md` shows `Notifications off`. |
 | Is the channel on? | `auto-check config get notify.email.enabled` |
 | Is the password set? | `auto-check doctor` reports whether the named variable is set, never its value. |
 | Does the server accept it? | `auto-check notify test` prints the error the server gave. |

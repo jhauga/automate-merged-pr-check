@@ -30,10 +30,11 @@ You contributed something, it was merged, and the repository moved on. Six month
 <root folder>/                     the folder you pick once
   automate-pr-demo-app/            one test folder per pull request
     context.md                     the form: what to watch, and what to do when it breaks
+    test-configuration.md          results kept, skip after a failure, notifications
     check.config.json              what the assistant decided about the check
     run.mjs                        the check itself
     baseline/                      the captures a passing run is compared with
-    results/<timestamp>/           one folder per run
+    results/<timestamp>/           one folder per run, the newest kept
     found-issue/MM-DD-YYYY/        failure reports
     proposed-solution/MM-DD-YYYY/  plans that fix them
     logs/, schedule/, repo/        the run log, the schedule files, the code under test
@@ -100,6 +101,7 @@ Secrets never go in the settings file: a setting names an environment variable, 
 | [Cheatsheet](CHEATSHEET.md) | Every command, option, path, and exit code, in tables. |
 | [Test folders](features/test-folders/index.md) | The root folder, folder names, the editor, and the guard. |
 | [The context.md form](features/context-form/index.md) | Every field, every flag, and how the form is validated. |
+| [test-configuration.md](features/test-configuration/index.md) | Results kept, skipping scheduled runs after a failure, and each test's notifications. |
 | [Configuration](features/configuration/index.md) | Per-user settings, the schema, and secrets. |
 | [Checks](features/checks/index.md) | Check kinds, the capability ladder, the contract, baselines, and motion pairs. |
 | [Running and scheduling](features/running-and-scheduling/index.md) | What a run does, and the schedule on each platform. |

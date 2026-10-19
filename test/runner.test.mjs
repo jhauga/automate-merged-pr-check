@@ -14,9 +14,13 @@ import {
   failureSignature,
   formatRun,
   hostAppLockFile,
+  keepFor,
+  lastFinishedRun,
   pruneResults,
+  RUN_FOLDER,
   runTest,
 } from '../lib/runner.mjs';
+import { newTestConfig } from '../lib/test-config.mjs';
 import { SLUG, fakes, makeTestFolder, readState, setMode } from './helpers/run-check.mjs';
 
 let base;
@@ -32,6 +36,8 @@ after(() => {
 const state = readState;
 const workRoot = (name, options) => makeTestFolder(base, name, options);
 const run = (root, deps, options = {}) => runTest({ testFolder: root, config: defaults(), deps, now: () => new Date(), ...options });
+/** A clock fixed at a local time in October 2026, two seconds past the minute. */
+const at = (day, hour, minute = 0) => () => new Date(2026, 9, day, hour, minute, 2);
 
 test('a passing run records the code under test, the fingerprint, and the comparison, and updates the state', async () => {
   const { root, dir } = await workRoot('pass');
@@ -95,6 +101,35 @@ test('a failure notifies once, a repeat stays quiet, a new commit notifies again
   assert.equal(calls.afterRun[0].state.lastRun, undefined);
 });
 
+test('test-configuration.md decides which outcomes notify and hands its account to the pipeline', async () => {
+  const { root, dir } = await workRoot('notify-config');
+  const config = path.join(dir, 'test-configuration.md');
+  const { calls, deps, setSha } = fakes();
+  setMode(dir, 'fail');
+
+  writeFileSync(config, newTestConfig());
+  const silenced = await run(root, deps, { now: at(19, 3) });
+  assert.equal(silenced.outcome, 'fail');
+  assert.deepEqual(silenced.decision, { reason: 'fail', notify: false, runFeatures: true, repeat: false });
+  assert.equal(calls.afterRun.at(-1).check.notify.onFail, false);
+  assert.equal(calls.afterRun.at(-1).account, null);
+
+  writeFileSync(config, newTestConfig()
+    .replace('**Send Notifications**: false', '**Send Notifications**: true')
+    .replace('**Notify when Test**: null', '**Notify when Test**: pass')
+    .replace('**Email**: null', '**Email**: jane.doe@example.com')
+    .replace('**Password**: null', '**Password**: %AUTO_CHECK_EMAIL_PASSWORD%'));
+  setSha('c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3');
+  const passOnly = await run(root, deps, { now: at(20, 3) });
+  assert.equal(passOnly.decision.reason, 'fail');
+  assert.equal(passOnly.decision.notify, false);
+  assert.deepEqual(calls.afterRun.at(-1).account, { email: 'jane.doe@example.com', password: '%AUTO_CHECK_EMAIL_PASSWORD%' });
+  setMode(dir, 'pass');
+  const recovered = await run(root, deps, { now: at(21, 3) });
+  assert.deepEqual(recovered.decision, { reason: 'recover', notify: true, runFeatures: false, repeat: false });
+  assert.ok(!readFileSync(recovered.resultFile, 'utf8').includes('AUTO_CHECK_EMAIL_PASSWORD'));
+});
+
 test('a capture that no longer matches the baseline turns a pass into a failure', async () => {
   const { root, dir } = await workRoot('repainted');
   setMode(dir, 'repainted');
@@ -138,6 +173,22 @@ test('a check that throws, a source that cannot be prepared, and a run that hang
   assert.equal(hung.outcome, 'error');
   assert.equal(hung.record.error, 'run.mjs did not finish within 0.03 minutes.');
   assert.equal(hung.record.runner.timedOut, true);
+});
+
+test('an invalid test-configuration.md stops the run before anything is written', async () => {
+  const { root, dir } = await workRoot('invalid-config');
+  writeFileSync(path.join(dir, 'test-configuration.md'), '# Test Configuration\n\n- **Keep Prior Results**: maybe\n');
+  const before = readdirSync(path.join(dir, 'results'));
+  const { calls, deps } = fakes();
+  await assert.rejects(run(root, deps), (error) => {
+    assert.ok(error instanceof RunError);
+    assert.equal(error.exitCode, 2);
+    assert.match(error.message, /\n {2}test-configuration\.md:3: Keep Prior Results takes true or false, not "maybe"\.$/);
+    return true;
+  });
+  assert.equal(calls.refresh, 0);
+  assert.deepEqual(readdirSync(path.join(dir, 'results')), before);
+  assert.equal(existsSync(path.join(dir, 'state.json')), false);
 });
 
 test('local mode follows the pull request: landed switches to the base branch, closed pauses, a conflict fails', async () => {
@@ -217,13 +268,212 @@ test('a live run holds the lock, and a lock left by a process that is gone is ta
   assert.equal(existsSync(path.join(dir, '.run.lock')), false);
 });
 
-test('old result folders are pruned, keeping the newest and the ones the state points to', () => {
+const PROTECTED = [
+  '2026-01-01T01-01-40-simulated-failure',
+  '2026-01-01T01-03-13-baseline',
+  '2026-01-04T03-00-00-simulated',
+  '2026-01-04T03-00-00-start-simulated',
+  'generate-try',
+  'generate-try-simulated',
+  'manual',
+];
+
+/** The run folders under `results`, oldest first. */
+const runFolders = (results) => readdirSync(results).filter((name) => RUN_FOLDER.test(name)).sort();
+
+test('only run folders count, the oldest go first, and the last pass is not kept past the count', () => {
   const resultsDir = path.join(base, 'prune', 'results');
-  const names = ['2026-01-01T03-00-00', '2026-01-02T03-00-00', '2026-01-03T03-00-00', '2026-01-04T03-00-00-simulated', '2026-01-05T03-00-00', 'generate-try'];
-  for (const name of names) mkdirSync(path.join(resultsDir, name), { recursive: true });
+  const runs = ['2026-01-01T03-00-00', '2026-01-02T03-00-00', '2026-01-03T03-00-00', '2026-01-03T03-00-00-2', '2026-01-05T03-00-00'];
+  for (const name of [...runs, ...PROTECTED]) mkdirSync(path.join(resultsDir, name), { recursive: true });
+  writeFileSync(path.join(resultsDir, '2026-01-06T03-00-00'), 'a file, not a run folder');
   const removed = pruneResults(resultsDir, { keep: 2, state: { lastPass: { resultDir: 'results/2026-01-01T03-00-00' } } });
-  assert.deepEqual(removed, ['2026-01-03T03-00-00', '2026-01-02T03-00-00']);
-  assert.deepEqual(readdirSync(resultsDir).sort(), ['2026-01-01T03-00-00', '2026-01-04T03-00-00-simulated', '2026-01-05T03-00-00', 'generate-try']);
+  assert.deepEqual(removed, ['2026-01-01T03-00-00', '2026-01-02T03-00-00', '2026-01-03T03-00-00']);
+  assert.deepEqual(readdirSync(resultsDir).sort(), [...PROTECTED, '2026-01-03T03-00-00-2', '2026-01-05T03-00-00', '2026-01-06T03-00-00'].sort());
+  assert.deepEqual(pruneResults(resultsDir, { keep: 1 }), ['2026-01-03T03-00-00-2']);
+  assert.deepEqual(readdirSync(resultsDir).filter((name) => PROTECTED.includes(name)).sort(), [...PROTECTED].sort());
+  assert.deepEqual(pruneResults(path.join(base, 'prune', 'missing'), { keep: 1 }), []);
+});
+
+test('a two-step check keeps the count of each half, and folders the state reads are kept past it', () => {
+  const resultsDir = path.join(base, 'prune-two-step', 'results');
+  const names = [1, 2, 3, 4].flatMap((day) => [`2026-01-0${day}T03-00-00-start`, `2026-01-0${day}T04-00-00-collect`]);
+  for (const name of names) mkdirSync(path.join(resultsDir, name), { recursive: true });
+  const removed = pruneResults(resultsDir, {
+    keep: 2,
+    state: {
+      openResolution: { resultDir: 'results/2026-01-01T04-00-00-collect' },
+      pendingCollect: { resultDir: 'results/2026-01-01T03-00-00-start' },
+      lastRun: { resultDir: 'results/2026-01-02T04-00-00-collect' },
+    },
+  });
+  assert.deepEqual(removed, ['2026-01-02T03-00-00-start']);
+  assert.deepEqual(runFolders(resultsDir), names.filter((name) => name !== '2026-01-02T03-00-00-start').sort());
+});
+
+test('a run keeps the number of run folders test-configuration.md sets, deleting the oldest first', async () => {
+  const { root, dir } = await workRoot('keep-two');
+  const results = path.join(dir, 'results');
+  rmSync(results, { recursive: true, force: true });
+  const kept = ['2026-10-16T01-01-40-simulated-failure', '2026-10-16T01-03-13-baseline', 'generate-try', 'generate-try-simulated'];
+  for (const name of [...kept, '2026-10-17T03-00-02', '2026-10-18T03-00-02']) mkdirSync(path.join(results, name), { recursive: true });
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig().replace('**Number of Test**: 7', '**Number of Test**: 2'));
+
+  let seenByAfterRun = null;
+  const afterRun = async () => {
+    seenByAfterRun = runFolders(results);
+    return { notified: false };
+  };
+  const result = await run(root, fakes({ afterRun }).deps, { now: () => new Date(2026, 9, 19, 3, 0, 2) });
+  assert.equal(result.outcome, 'pass');
+  assert.equal(path.basename(result.resultDir), '2026-10-19T03-00-02');
+  assert.deepEqual(seenByAfterRun, ['2026-10-18T03-00-02', '2026-10-19T03-00-02']);
+  assert.equal(result.kept, 2);
+  assert.deepEqual(result.pruned, ['2026-10-17T03-00-02']);
+  assert.deepEqual(readdirSync(results).sort(), [...kept, '2026-10-18T03-00-02', '2026-10-19T03-00-02'].sort());
+  assert.match(formatRun(result, { cwd: dir }), /^ {2}kept: 2 run folders, removed 2026-10-17T03-00-02$/m);
+});
+
+test('Keep Prior Results false keeps only the newest run folder, and each run still makes its own', async () => {
+  const { root, dir } = await workRoot('keep-newest');
+  const results = path.join(dir, 'results');
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig().replace('**Keep Prior Results**: true', '**Keep Prior Results**: false'));
+  const first = await run(root, fakes().deps, { now: () => new Date(2026, 9, 19, 3, 0, 2) });
+  assert.equal(first.kept, 1);
+  assert.deepEqual(runFolders(results), ['2026-10-19T03-00-02']);
+  const second = await run(root, fakes().deps, { now: () => new Date(2026, 9, 20, 3, 0, 2) });
+  assert.deepEqual(second.pruned, ['2026-10-19T03-00-02']);
+  assert.deepEqual(runFolders(results), ['2026-10-20T03-00-02']);
+  assert.match(formatRun(second, { cwd: dir }), /^ {2}kept: 1 run folder, removed 2026-10-19T03-00-02$/m);
+  assert.ok(readdirSync(results).some((name) => name.endsWith('-baseline')));
+});
+
+test('the folder of an open failure is kept past the count until a pass closes it', async () => {
+  const { root, dir } = await workRoot('keep-open-failure');
+  const results = path.join(dir, 'results');
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig().replace('**Number of Test**: 7', '**Number of Test**: 1'));
+  setMode(dir, 'fail');
+  const failed = await run(root, fakes().deps, { now: () => new Date(2026, 9, 21, 3, 0, 2) });
+  assert.equal(failed.outcome, 'fail');
+  writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ ...state(dir), openResolution: { resultDir: 'results/2026-10-21T03-00-02' } }));
+  const repeat = await run(root, fakes().deps, { now: () => new Date(2026, 9, 22, 3, 0, 2) });
+  assert.deepEqual(repeat.pruned, []);
+  assert.deepEqual(runFolders(results), ['2026-10-21T03-00-02', '2026-10-22T03-00-02']);
+  setMode(dir, 'pass');
+  const passed = await run(root, fakes().deps, { now: () => new Date(2026, 9, 23, 3, 0, 2) });
+  assert.equal(passed.outcome, 'pass');
+  assert.deepEqual(passed.pruned, ['2026-10-21T03-00-02', '2026-10-22T03-00-02']);
+  assert.deepEqual(runFolders(results), ['2026-10-23T03-00-02']);
+});
+
+test('without test-configuration.md, the results.keep setting decides', async () => {
+  const { root, dir } = await workRoot('keep-settings');
+  const results = path.join(dir, 'results');
+  for (const day of [20, 21, 22]) mkdirSync(path.join(results, `2026-10-${day}T03-00-02`), { recursive: true });
+  const config = { ...defaults(), results: { keep: 2 } };
+  const result = await runTest({ testFolder: root, config, deps: fakes().deps, now: () => new Date(2026, 9, 23, 3, 0, 2) });
+  assert.equal(result.kept, 2);
+  assert.deepEqual(result.pruned, ['2026-10-20T03-00-02', '2026-10-21T03-00-02']);
+  assert.deepEqual(runFolders(results), ['2026-10-22T03-00-02', '2026-10-23T03-00-02']);
+  assert.deepEqual(keepFor({ state: 'missing', settings: null }, {}), { keep: 14, from: 'results.keep' });
+});
+
+/** Writes a run folder under the test's results, with `result` as its result.json: an object, raw text, or none. */
+function writeRun(dir, name, result) {
+  const folder = path.join(dir, 'results', name);
+  mkdirSync(folder, { recursive: true });
+  if (result !== undefined) writeFileSync(path.join(folder, 'result.json'), typeof result === 'string' ? result : JSON.stringify(result));
+}
+
+test('the newest finished run is the newest run folder that is not a start, with its result when it can be read', () => {
+  const dir = path.join(base, 'last-finished');
+  const resultsDir = path.join(dir, 'results');
+  assert.equal(lastFinishedRun(resultsDir), null);
+  mkdirSync(resultsDir, { recursive: true });
+  assert.equal(lastFinishedRun(resultsDir), null);
+  writeRun(dir, '2026-10-18T03-00-02', { outcome: 'pass' });
+  writeRun(dir, '2026-10-19T03-00-02', { outcome: 'fail' });
+  writeRun(dir, '2026-10-19T09-00-00-simulated', { outcome: 'pass' });
+  writeRun(dir, '2026-10-19T10-00-00-baseline', { outcome: 'pass' });
+  writeRun(dir, '2026-10-20T03-00-00-start', { outcome: 'pass' });
+  writeRun(dir, 'generate-try', { outcome: 'pass' });
+  assert.deepEqual(lastFinishedRun(resultsDir), { folder: '2026-10-19T03-00-02', result: { outcome: 'fail' } });
+  writeRun(dir, '2026-10-20T04-00-00-collect');
+  assert.deepEqual(lastFinishedRun(resultsDir), { folder: '2026-10-20T04-00-00-collect', result: null });
+  writeRun(dir, '2026-10-21T03-00-02', '{ not json');
+  assert.deepEqual(lastFinishedRun(resultsDir), { folder: '2026-10-21T03-00-02', result: null });
+});
+
+test('a scheduled run is skipped while the newest finished run failed, writes nothing, and a hand run turns it back on', async () => {
+  const { root, dir } = await workRoot('skip-after-fail');
+  const results = path.join(dir, 'results');
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig());
+  writeRun(dir, '2026-10-18T03-00-02', { outcome: 'fail' });
+  writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ lastRun: { outcome: 'fail', resultDir: 'results/2026-10-18T03-00-02' } }));
+  writeRun(dir, '2026-10-18T09-00-00-simulated', { outcome: 'fail', simulated: true });
+  writeRun(dir, '2026-10-18T10-00-00-baseline', { outcome: 'baseline' });
+  const before = { results: readdirSync(results).sort(), state: readFileSync(path.join(dir, 'state.json'), 'utf8') };
+
+  const { calls, deps } = fakes();
+  const skipped = await run(root, deps, { scheduled: true, now: at(19, 3) });
+  assert.equal(skipped.skipped, true);
+  assert.equal(skipped.outcome, 'skipped');
+  assert.equal(skipped.exitCode, 0);
+  assert.equal(skipped.lastResult, 'results/2026-10-18T03-00-02/result.json');
+  assert.equal(calls.refresh, 0);
+  assert.equal(calls.afterRun.length, 0);
+  assert.deepEqual(readdirSync(results).sort(), before.results);
+  assert.equal(readFileSync(path.join(dir, 'state.json'), 'utf8'), before.state);
+  assert.equal(existsSync(path.join(dir, '.run.lock')), false);
+  assert.equal(formatRun(skipped), 'skip-after-fail: skipped. The last run failed (results/2026-10-18T03-00-02/result.json), '
+    + 'and Turn Off on Failed Test is true in test-configuration.md. Fix the cause, then run auto-check run here; '
+    + 'scheduled runs resume after a run that does not fail.\n');
+
+  const hand = await run(root, deps, { now: at(19, 9) });
+  assert.equal(hand.outcome, 'pass');
+  const next = await run(root, deps, { scheduled: true, now: at(20, 3) });
+  assert.equal(next.skipped, undefined);
+  assert.equal(next.outcome, 'pass');
+});
+
+test('a scheduled run goes ahead after an error, without a readable result, without the file, or with Turn Off false', async () => {
+  const { root, dir } = await workRoot('skip-or-not');
+  const config = path.join(dir, 'test-configuration.md');
+  const scheduled = (day) => run(root, fakes().deps, { scheduled: true, now: at(day, 3) });
+
+  writeRun(dir, '2026-10-10T03-00-02', { outcome: 'fail' });
+  assert.equal((await scheduled(11)).outcome, 'pass');
+
+  writeFileSync(config, newTestConfig());
+  writeRun(dir, '2026-10-12T03-00-02', { outcome: 'error' });
+  assert.equal((await scheduled(13)).outcome, 'pass');
+  writeRun(dir, '2026-10-14T03-00-02');
+  assert.equal((await scheduled(15)).outcome, 'pass');
+  writeRun(dir, '2026-10-16T03-00-02', '{ not json');
+  assert.equal((await scheduled(17)).outcome, 'pass');
+
+  writeFileSync(config, newTestConfig().replace('**Turn Off on Failed Test**: true', '**Turn Off on Failed Test**: false'));
+  writeRun(dir, '2026-10-18T03-00-02', { outcome: 'fail' });
+  assert.equal((await scheduled(19)).outcome, 'pass');
+
+  writeFileSync(config, newTestConfig());
+  writeRun(dir, '2026-10-20T03-00-02', { outcome: 'fail' });
+  assert.equal((await scheduled(21)).skipped, true);
+});
+
+test('the collect half of a two-step check is never skipped, and its start is', async () => {
+  const { root, dir } = await workRoot('skip-two-step', { runMode: 'two-step' });
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig());
+  const { deps } = fakes();
+  const started = await run(root, deps, { phase: 'start', scheduled: true, now: at(18, 3) });
+  assert.equal(started.started, true);
+  writeRun(dir, '2026-10-18T03-30-00-collect', { outcome: 'fail' });
+  const collected = await run(root, deps, { phase: 'collect', scheduled: true, now: at(18, 4) });
+  assert.equal(collected.skipped, undefined);
+  assert.equal(collected.outcome, 'pass');
+  writeRun(dir, '2026-10-18T05-00-00-collect', { outcome: 'fail' });
+  const next = await run(root, deps, { phase: 'start', scheduled: true, now: at(19, 3) });
+  assert.equal(next.skipped, true);
+  assert.equal(next.lastResult, 'results/2026-10-18T05-00-00-collect/result.json');
 });
 
 test('notification decisions, signatures, and expanded subject paths', () => {

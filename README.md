@@ -13,6 +13,7 @@ You contributed something, it was merged, and the repository moved on. `auto-che
 - **One test, one folder.** Each pull request gets its own folder with its form, its check, its baseline, and its results. The folders live under a root folder you pick once, outside this repository.
 - **An assistant writes the check.** Claude Code, GitHub Copilot CLI, or Codex writes it, and auto-check verifies it: the check must fail when the subject is replaced with a black picture, and its captures must move when the subject is meant to move.
 - **A failure can carry on by itself.** A form in each test folder decides how far a failure goes: a report, a proposed fix, a branch in a local clone, a push, a pull request.
+- **Each test sets its own pace.** A second file in each test folder decides how many results it keeps, whether its schedule waits for you after a failure, and whether, when, and from which email account it tells you.
 
 ## Install
 
@@ -40,7 +41,7 @@ No -n, --name was given. What should the test folder be called? [automate-pr-sam
 > automate-pr-sample-canvas
 Root: /home/<user>/Documents/auto-checks (saved in the auto-check user settings)
 Test folder: /home/<user>/Documents/auto-checks/automate-pr-sample-canvas
-Wrote: context.md, .gitignore
+Wrote: context.md, test-configuration.md, .gitignore
 ```
 
 From there the assistant reads the pull request, writes the check in that folder, and auto-check verifies it, captures the baseline, and installs a scheduled task named `auto-check automate-pr-sample-canvas`. A first run takes about an hour, most of it the assistant's.
@@ -103,16 +104,38 @@ With no check in the folder yet, it writes one. With a check already there, it r
 
 Every run reads it again, so turning a step on or off takes an edit, not a reinstall. `auto-check context validate` prints the report above without changing anything.
 
+`test-configuration.md` beside it says how the test behaves on its schedule. A new test folder starts with this:
+
+```md
+# Test Configuration
+
+## Scheduled Test
+
+- **Turn Off on Failed Test**: true
+- **Keep Prior Results**: true
+  - **Number of Test**: 7
+
+## Send Notifications
+
+- **Send Notifications**: false
+  - **Notify when Test**: null
+  - **Account Configuration**:
+    - **Email**: null
+    - **Password**: null
+```
+
+So the test keeps its seven newest runs, skips its scheduled runs after a failure until a run you start yourself does not fail, and sends nothing until you name an account. Password takes the name of an environment variable, such as `$AUTO_CHECK_EMAIL_PASSWORD`, never the password itself.
+
 ## Commands
 
 | Command | What it does |
 | --- | --- |
 | `auto-check <pr-url>` | Make a test folder for a pull request and write its check. |
 | `auto-check --name <folder>` | Make the folder and its form, and stop there. |
-| `auto-check` | In a test folder: check the form, then write the check or report where it stands. |
-| `auto-check run [<folder>]` | Run the check now, as the schedule does. |
+| `auto-check` | In a test folder: check both forms, then write the check or report where it stands. |
+| `auto-check run [<folder>]` | Run the check now. With `--scheduled`, the way the schedule does. |
 | `auto-check inspect <pr-url>` | What auto-check makes of a pull request: its kind, its parts, its watched paths. |
-| `auto-check context validate` | Check the form, rule by rule. |
+| `auto-check context validate` | Check `context.md` and `test-configuration.md`, rule by rule. |
 | `auto-check schedule install\|remove\|status` | The scheduled task of one test. |
 | `auto-check resolve [--propose\|--issue\|--pr]` | Carry a failure further by hand. |
 | `auto-check notify test` | Send a test notification through the enabled channels. |

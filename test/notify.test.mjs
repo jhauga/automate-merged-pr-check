@@ -7,7 +7,10 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { defaults } from '../lib/config.mjs';
+import { runAccount } from '../lib/notify/account.mjs';
+import { NOTIFY_ROOT, createEmailSender, smtpFor } from '../lib/notify/email.mjs';
 import { DRY_RUN_FILE, buildMessage, describeNotification, plannedDeliveries, sendNotifications, testMessage } from '../lib/notify/index.mjs';
+import { codeRoot } from '../lib/paths.mjs';
 
 let base;
 
@@ -115,7 +118,7 @@ test('the real send-email engine sends one email and one text through a JSON tra
   ].join('\n'));
   const notify = notifySettings();
   notify.email.account = 'jsontest';
-  const result = await sendNotifications({ workRoot: root, notify, message: testMessage({ workRoot: root }), env: {} });
+  const result = await sendNotifications({ notify, message: testMessage({ workRoot: root }), env: {}, deps: { notifyRoot: path.join(root, 'notify') } });
   assert.deepEqual(result.sent, ['email', 'sms']);
   assert.deepEqual(result.failed, []);
   const sent = readFileSync(path.join(accounts, 'sent.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
@@ -142,6 +145,75 @@ test('the default account needs its password variable, and one failing channel d
   assert.deepEqual(result.failed.map((failure) => failure.channel), ['email', 'sms']);
   assert.match(result.failed[0].error, /^AUTO_CHECK_SMTP_PASSWORD is not set/);
   assert.match(describeNotification(result, { workRoot: base }), /^Notification: sent by webhook; email failed: AUTO_CHECK_SMTP_PASSWORD is not set/);
+});
+
+test('the shipped _default account sends with the transport handed over in memory, and holds nothing afterwards', async () => {
+  const sender = createEmailSender({ transport: { jsonTransport: true } });
+  const result = await sender.send({ from: 'auto-check@example.com', to: ['jane.doe@example.com'], subject: 'auto-check: test message', text: 'hello' });
+  assert.equal(result.success, true);
+  assert.deepEqual(runAccount(), {});
+  await assert.rejects(createEmailSender().send({ to: ['jane.doe@example.com'] }), /no email account is set to send from/);
+});
+
+test('the sender is rooted at the tool\'s own notify folder, whatever folder the run is in', async () => {
+  const roots = [];
+  const loadEngine = async () => ({
+    createEngineConfig: (root) => ({ root }),
+    EmailEngine: class {
+      constructor(config) {
+        roots.push(config.root);
+      }
+
+      async initialize() {}
+
+      async sendEmail() {
+        return { success: true };
+      }
+    },
+  });
+  await createEmailSender({ transport: { jsonTransport: true }, loadEngine }).send({});
+  assert.deepEqual(roots, [NOTIFY_ROOT]);
+  assert.equal(NOTIFY_ROOT, path.join(codeRoot, 'notify'));
+});
+
+test('an account\'s SMTP server comes from its domain, then from the settings, and never from the placeholder', () => {
+  assert.deepEqual(smtpFor('demo-user@gmail.com'), { host: 'smtp.gmail.com', port: 465, secure: true });
+  assert.deepEqual(smtpFor('jane.doe@example.net', { host: 'mail.example.net', port: 587, secure: false }), { host: 'mail.example.net', port: 587, secure: false });
+  assert.deepEqual(smtpFor('jane.doe@example.net', { service: 'SendGrid' }), { service: 'SendGrid' });
+  assert.throws(() => smtpFor('jane.doe@example.net', defaults().notify.email.smtp), /^Error: no SMTP server is known for example\.net; set notify\.email\.smtp\.host and notify\.email\.smtp\.port with auto-check config set$/);
+});
+
+test('a test\'s own account sends from and to its address, with the password read at send time and never shown', async () => {
+  const secret = 'correct-horse-battery-staple';
+  const notify = notifySettings({ email: false, sms: false });
+  notify.email.smtp = { ...notify.email.smtp, host: 'mail.example.com', port: 587 };
+  const account = { email: '%AUTO_CHECK_EMAIL%', password: '$AUTO_CHECK_EMAIL_PASSWORD' };
+  const env = { AUTO_CHECK_EMAIL: 'jane.doe@example.com', AUTO_CHECK_EMAIL_PASSWORD: secret };
+  const used = [];
+  const sends = [];
+  const emailSender = (options) => {
+    used.push(options);
+    return { send: async (mail) => sends.push(mail) };
+  };
+  const message = testMessage({ workRoot: base });
+  const result = await sendNotifications({ notify, message, account, env, deps: { emailSender } });
+  assert.deepEqual(result.sent, ['email']);
+  assert.deepEqual(sends.map((mail) => [mail.from, mail.to]), [['jane.doe@example.com', ['jane.doe@example.com']]]);
+  assert.deepEqual(used, [{ account: '_default', transport: { host: 'mail.example.com', port: 587, secure: false, auth: { user: 'jane.doe@example.com', pass: secret } } }]);
+
+  const unset = await sendNotifications({ notify, message, account, env: { AUTO_CHECK_EMAIL: 'jane.doe@example.com' }, deps: { emailSender } });
+  assert.deepEqual(unset.failed, [{ channel: 'email', error: "AUTO_CHECK_EMAIL_PASSWORD is not set; put the email password there, for example in the test folder's .env" }]);
+
+  const outDir = path.join(base, 'account-dry-run');
+  const dry = await sendNotifications({ notify, message, account, env, outDir, dryRun: true });
+  const written = readFileSync(path.join(outDir, DRY_RUN_FILE), 'utf8');
+  assert.equal(dry.dryRun, true);
+  assert.match(written, /^From: jane\.doe@example\.com\nTo: jane\.doe@example\.com$/m);
+  for (const text of [written, JSON.stringify(result), JSON.stringify(unset), JSON.stringify(dry)]) assert.ok(!text.includes(secret));
+
+  const literal = await sendNotifications({ notify, message, account: { email: 'jane.doe@example.com', password: secret }, env: {}, deps: { emailSender } });
+  assert.deepEqual(literal.sent, ['email']);
+  assert.equal(used.at(-1).transport.auth.pass, secret);
 });
 
 test('webhooks post JSON or plain text, with the secret as a bearer token', async () => {

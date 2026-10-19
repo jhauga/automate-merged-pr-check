@@ -56,7 +56,24 @@ auto-check config set notify.dryRun false
 
 ## One test, its own rules
 
-In that test's `check.config.json`:
+In that test folder's `test-configuration.md`:
+
+```md
+- **Send Notifications**: true
+  - **Notify when Test**: fail
+  - **Account Configuration**:
+    - **Email**: jane.doe@example.com
+    - **Password**: %AUTO_CHECK_EMAIL_PASSWORD%
+```
+
+```sh
+echo AUTO_CHECK_EMAIL_PASSWORD=app-password-here >> .env
+auto-check notify test --dry-run
+```
+
+`Send Notifications: false`, the default in a new test folder, keeps that test quiet whatever your settings turn on. See [test-configuration.md](../test-configuration/index.md).
+
+Without that file, a test's `check.config.json` can override single settings instead:
 
 ```json
 "notify": { "onPass": true }

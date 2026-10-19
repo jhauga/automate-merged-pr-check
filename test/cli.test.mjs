@@ -7,6 +7,7 @@ import { PassThrough } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { main } from '../lib/cli.mjs';
 import { codeRoot } from '../lib/paths.mjs';
+import { newTestConfig } from '../lib/test-config.mjs';
 import { CONFIG_DIR_VAR, SETTINGS_FILE } from '../lib/user-config.mjs';
 import { installFakeAssistant, installFakeGh } from './helpers/fake-github.mjs';
 import { shippedContext } from './helpers/shipped.mjs';
@@ -97,6 +98,8 @@ test('a command and --help lists that command\'s options, one line each', () => 
   assert.match(stdout, /^Usage:\n {2}auto-check run \[<folder>\]/);
   assert.match(stdout, /^ {2}--phase start\|collect {2,}Run one half of a two-phase check/m);
   assert.match(stdout, /^ {2}--no-notify {2,}Do not send notifications for this run\.$/m);
+  assert.match(stdout, /^ {2}--scheduled {2,}Run the way the schedule does: follow Turn Off on Failed Test in test-configuration\.md\.$/m);
+  assert.match(cli(['--help']).stdout, /^ {2}auto-check run \[<folder>\] .*\[--scheduled\]$/m);
   assert.match(stdout, /^ {2}-v, --version {2,}Print the version of auto-check and exit\.$/m);
   assert.match(cli(['resolve', '--help']).stdout, /^ {2}--push {2,}Push the branch to your fork\./m);
   assert.match(cli(['config', '--help']).stdout, /^ {2}auto-check config get\|set\|unset\|list\|path/m);
@@ -167,8 +170,9 @@ test('auto-check --name writes the scaffold, and nothing else, under the root', 
   assert.equal(code, 0, stderr);
   const dir = path.join(holder, 'automate-pr-sample-canvas');
   assert.match(stdout, new RegExp(`^Test folder: ${dir.replace(/[\\]/g, '\\\\')}$`, 'm'));
-  assert.match(stdout, /^Wrote: context\.md, \.gitignore$/m);
-  assert.deepEqual(readdirSync(dir).sort(), ['.gitignore', 'context.md']);
+  assert.match(stdout, /^Wrote: context\.md, test-configuration\.md, \.gitignore$/m);
+  assert.deepEqual(readdirSync(dir).sort(), ['.gitignore', 'context.md', 'test-configuration.md']);
+  assert.equal(readFileSync(path.join(dir, 'test-configuration.md'), 'utf8'), newTestConfig());
   const form = readFileSync(path.join(dir, 'context.md'), 'utf8');
   assert.match(form, /^- \*\*Test folder name\*\*: automate-pr-sample-canvas /m);
   assert.match(form, /^- \*\*Find Issue\*\*: true /m);
@@ -265,6 +269,22 @@ test('run needs an existing check and a real picture for --simulate-fail', () =>
   assert.equal(missing.code, 2);
   assert.match(missing.stderr, /holds no check yet/);
   assert.equal(cli(['run', '--simulate-fail', 'no-such.png'], dir).code, 4);
+  const both = cli(['run', '--scheduled', '--simulate-fail', 'black'], dir);
+  assert.equal(both.code, 4);
+  assert.match(both.stderr, /--scheduled and --simulate-fail do not go together/);
+});
+
+test('a scheduled run after a failed one is skipped with one line, and exits 0', () => {
+  const dir = copyWithCheck('automate-pr-skipped');
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig());
+  mkdirSync(path.join(dir, 'results', '2026-01-02T03-00-00'), { recursive: true });
+  writeFileSync(path.join(dir, 'results', '2026-01-02T03-00-00', 'result.json'), JSON.stringify({ outcome: 'fail' }));
+  const { code, stdout, stderr } = cli(['run', '--scheduled'], dir);
+  assert.equal(code, 0, stderr);
+  assert.equal(stdout, 'automate-pr-skipped: skipped. The last run failed (results/2026-01-02T03-00-00/result.json), '
+    + 'and Turn Off on Failed Test is true in test-configuration.md. Fix the cause, then run auto-check run here; '
+    + 'scheduled runs resume after a run that does not fail.\n');
+  assert.deepEqual(readdirSync(path.join(dir, 'results')), ['2026-01-02T03-00-00']);
 });
 
 test('notify test --dry-run prints what each enabled channel would receive', () => {
@@ -279,6 +299,51 @@ test('notify test --dry-run prints what each enabled channel would receive', () 
   assert.match(stdout, /^Dry run: nothing was sent\. These messages would go out:\n\nemail\nFrom: auto-check@example\.com\nTo: jane\.doe@example\.com\nSubject: auto-check: test message\n/);
   assert.match(stdout, /\nsms\nFrom: auto-check@example\.com\nTo: 5551234567@txt\.example\.com\n/);
   assert.equal(cli(['notify', 'send'], dir, env).code, 4);
+});
+
+test('run <folder> started elsewhere loads that folder\'s .env, never over a variable already set', async () => {
+  const dir = copyWithCheck('automate-pr-dotenv');
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig());
+  mkdirSync(path.join(dir, 'results', '2026-01-02T03-00-00'), { recursive: true });
+  writeFileSync(path.join(dir, 'results', '2026-01-02T03-00-00', 'result.json'), JSON.stringify({ outcome: 'fail' }));
+  writeFileSync(path.join(dir, '.env'), 'AUTO_CHECK_EMAIL_PASSWORD=from-the-folder\n');
+
+  const env = { ...baseEnv };
+  delete env.AUTO_CHECK_EMAIL_PASSWORD;
+  const loaded = await onTerminal(['run', dir, '--scheduled'], { cwd: base, env });
+  assert.equal(loaded.code, 0, loaded.stderr);
+  assert.match(loaded.stdout, /^automate-pr-dotenv: skipped\./);
+  assert.equal(env.AUTO_CHECK_EMAIL_PASSWORD, 'from-the-folder');
+
+  const kept = { ...baseEnv, AUTO_CHECK_EMAIL_PASSWORD: 'already-set' };
+  await onTerminal(['run', dir, '--scheduled'], { cwd: base, env: kept });
+  assert.equal(kept.AUTO_CHECK_EMAIL_PASSWORD, 'already-set');
+});
+
+test('notify test in a test folder follows its test-configuration.md', () => {
+  const dir = copyNamed('acme-notify-config');
+  const env = ownSettings('notify-config', { notify: { email: { enabled: true }, sms: { enabled: true } } });
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig());
+  const off = cli(['notify', 'test', '--dry-run'], dir, env);
+  assert.equal(off.code, 0, off.stderr);
+  assert.equal(off.stdout, 'test-configuration.md turns notifications off for this test (Send Notifications: false).\n');
+
+  const secret = 'correct-horse-battery-staple';
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig()
+    .replace('**Send Notifications**: false', '**Send Notifications**: true')
+    .replace('**Notify when Test**: null', '**Notify when Test**: fail')
+    .replace('**Email**: null', '**Email**: jane.doe@example.com')
+    .replace('**Password**: null', '**Password**: %AUTO_CHECK_EMAIL_PASSWORD%'));
+  const own = cli(['notify', 'test', '--dry-run'], dir, { ...env, AUTO_CHECK_EMAIL_PASSWORD: secret });
+  assert.equal(own.code, 0, own.stderr);
+  assert.match(own.stdout, /\n\nemail\nFrom: jane\.doe@example\.com\nTo: jane\.doe@example\.com\nSubject: auto-check: test message\n/);
+  assert.match(own.stdout, /\nsms\nFrom: jane\.doe@example\.com\nTo: 5551234567@txt\.example\.com\n/);
+  assert.ok(!`${own.stdout}${own.stderr}`.includes(secret));
+
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig().replace('**Send Notifications**: false', '**Send Notifications**: maybe'));
+  const invalid = cli(['notify', 'test', '--dry-run'], dir, env);
+  assert.equal(invalid.code, 4);
+  assert.match(invalid.stderr, /^test-configuration\.md:11: Send Notifications takes true or false, not "maybe"\.$/m);
 });
 
 test('resolve needs one step, and --propose needs an open failure', () => {
@@ -362,7 +427,7 @@ test('session A: a pull request URL asks for the root and the name, then writes 
   assert.ok(first.stdout.includes(`Root: ${holder} (saved in the auto-check user settings)`));
   const dir = path.join(holder, 'automate-pr-mine');
   assert.ok(first.stdout.includes(`Test folder: ${dir}`));
-  assert.match(first.stdout, /^Wrote: context\.md, \.gitignore$/m);
+  assert.match(first.stdout, /^Wrote: context\.md, test-configuration\.md, \.gitignore$/m);
 
   const form = readFileSync(path.join(dir, 'context.md'), 'utf8');
   assert.ok(form.includes(`- **Test folder root**: ${holder} `));
@@ -460,11 +525,70 @@ test('a bare run in a folder that holds a check reports where it stands', () => 
     lastRun: { at: '2026-01-02T03:15:00.000Z', outcome: 'fail', resultDir: 'results/2026-01-02T03-15-00' },
     openResolution: { day: '01-02-2026', foundIssue: 'found-issue/01-02-2026/found-issue.md' },
   }));
+  mkdirSync(path.join(dir, 'results', '2026-01-02T03-15-00'), { recursive: true });
+  writeFileSync(path.join(dir, 'results', '2026-01-02T03-15-00', 'result.json'), JSON.stringify({ outcome: 'fail' }));
   const { code, stdout, stderr } = cli([], dir, ghEnv);
   assert.equal(code, 0, stderr);
+  assert.match(stdout, /^Wrote test-configuration\.md with the defaults\.$/m);
+  assert.match(stdout, /^Scheduled runs +skipped after a failed run +pass$/m);
+  assert.match(stdout, /^Results kept +7 run folders +pass$/m);
+  assert.match(stdout, /^Notifications +off +pass$/m);
+  assert.match(stdout, /^Refreshed AGENTS\.md, CLAUDE\.md, and \d+ skills in \.claude\/skills\.$/m);
   assert.match(stdout, /^Check +acme-demo-app-pr-123, source \/ gui-canvas-extension$/m);
   assert.match(stdout, /^Last run +fail at 2026-01-02T03:15:00\.000Z, results\/2026-01-02T03-15-00$/m);
-  assert.match(stdout, /^Next run +auto-check[- ]automate-pr-standing[^\n]* at [^\n]+$/m);
+  assert.match(stdout, /^Next run +auto-check[- ]automate-pr-standing[^\n]* at [^\n]+ \(skipped: the last run failed, results\/2026-01-02T03-15-00\)$/m);
   assert.match(stdout, /^Open failure +found-issue[\\/]01-02-2026[\\/]found-issue\.md$/m);
   assert.match(stdout, /^Next steps +auto-check run, auto-check schedule status, auto-check resolve --propose$/m);
+  assert.equal(readFileSync(path.join(dir, 'test-configuration.md'), 'utf8'), newTestConfig());
+  for (const file of ['AGENTS.md', 'CLAUDE.md', path.join('.claude', 'skills', 'auto-check-context', 'SKILL.md')]) {
+    assert.ok(existsSync(path.join(dir, file)), file);
+  }
+
+  const edited = newTestConfig().replace('**Number of Test**: 7', '**Number of Test**: 2');
+  writeFileSync(path.join(dir, 'test-configuration.md'), edited);
+  const again = cli([], dir, ghEnv);
+  assert.equal(again.code, 0, again.stderr);
+  assert.doesNotMatch(again.stdout, /^Wrote test-configuration\.md/m);
+  assert.match(again.stdout, /^Results kept +2 run folders +pass$/m);
+  assert.equal(readFileSync(path.join(dir, 'test-configuration.md'), 'utf8'), edited);
+
+  writeFileSync(path.join(dir, 'test-configuration.md'), edited.replace('**Turn Off on Failed Test**: true', '**Turn Off on Failed Test**: maybe'));
+  const invalid = cli([], dir, ghEnv);
+  assert.equal(invalid.code, 4);
+  assert.match(invalid.stderr, /^test-configuration\.md:5: Turn Off on Failed Test takes true or false, not "maybe"\.$/m);
+  assert.doesNotMatch(invalid.stdout, /^Check +/m);
+});
+
+test('context validate checks test-configuration.md by its name, and both forms without a path', () => {
+  const holder = path.join(base, 'validate-config-root');
+  const dir = path.join(holder, 'automate-pr-sample-canvas');
+  mkdirSync(dir, { recursive: true });
+  const env = { ...ghEnv, [CONFIG_DIR_VAR]: ownSettings('validate-config', { root: holder })[CONFIG_DIR_VAR] };
+  const form = readFileSync(path.join(codeRoot, 'test', 'fixtures', 'context-filled.md'), 'utf8')
+    .replace('- **Test folder root**: <!-- filled in by the test -->', `- **Test folder root**: ${holder}`)
+    .replace('- **Local Repository**: <!-- filled in by the test -->', '- **Local Repository**:')
+    .replace('- **Commit Solution**: true', '- **Commit Solution**: false')
+    .replace('  - **Local Commit**: true', '  - **Local Commit**: false');
+  writeFileSync(path.join(dir, 'context.md'), form);
+
+  const without = cli(['context', 'validate'], dir, env);
+  assert.equal(without.code, 0, without.stderr);
+  assert.match(without.stdout, /^Merged PR +acme\/demo-app#101, merged +pass$/m);
+  assert.match(without.stdout, /^test-configuration\.md: none, so the settings decide what is kept and who is notified\./m);
+  assert.equal(existsSync(path.join(dir, 'test-configuration.md')), false);
+
+  writeFileSync(path.join(dir, 'test-configuration.md'), newTestConfig()
+    .replace('**Send Notifications**: false', '**Send Notifications**: true')
+    .replace('**Notify when Test**: null', '**Notify when Test**: sometimes'));
+  const both = cli(['context', 'validate'], dir, env);
+  assert.equal(both.code, 4);
+  assert.match(both.stdout, /^Merged PR +acme\/demo-app#101, merged +pass$/m);
+  assert.match(both.stdout, /^Notifications +Notify when Test takes pass, fail, or both, not "sometimes"\. +fail$/m);
+  assert.match(both.stderr, /^test-configuration\.md:12: Notify when Test takes pass, fail, or both, not "sometimes"\.$/m);
+
+  const one = cli(['context', 'validate', 'test-configuration.md'], dir, env);
+  assert.equal(one.code, 4);
+  assert.doesNotMatch(one.stdout, /^Merged PR/m);
+  assert.match(one.stdout, /^Scheduled runs +skipped after a failed run +pass$/m);
+  assert.match(one.stderr, /^test-configuration\.md:12: /m);
 });

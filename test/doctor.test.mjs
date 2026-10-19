@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { defaults } from '../lib/config.mjs';
 import { collectRows, compareVersions, exitCodeFor, formatRows, runDoctor } from '../lib/doctor.mjs';
 import { codeRoot } from '../lib/paths.mjs';
+import { newTestConfig } from '../lib/test-config.mjs';
 import { assistantState } from '../lib/setup.mjs';
 
 const ON_PATH = { git: 'git', gh: 'gh', claude: 'claude', copilot: 'copilot', schtasks: 'schtasks' };
@@ -96,6 +99,69 @@ test('secret values never reach the report', () => {
   });
   assert.doesNotMatch(output, /placeholder-secret/);
   assert.match(output, /AUTO_CHECK_SMTP_PASSWORD set, AUTO_CHECK_WEBHOOK_SECRET unset/);
+});
+
+test('in a test folder, the test configuration and its password are reported, and the password is never shown', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'auto-check-doctor-'));
+  const file = path.join(dir, 'test-configuration.md');
+  const secret = 'placeholder-secret';
+  const sending = (password) => newTestConfig()
+    .replace('**Send Notifications**: false', '**Send Notifications**: true')
+    .replace('**Notify when Test**: null', '**Notify when Test**: fail')
+    .replace('**Email**: null', '**Email**: jane.doe@example.com')
+    .replace('**Password**: null', `**Password**: ${password}`);
+  try {
+    assert.deepEqual(row(rows({ workRoot: dir }), 'test-configuration.md'), {
+      name: 'test-configuration.md',
+      status: 'info',
+      detail: 'none, so the settings decide what is kept and who is notified; a bare auto-check writes one',
+    });
+    assert.equal(row(rows({ workRoot: dir }), 'password'), undefined);
+
+    writeFileSync(file, newTestConfig());
+    assert.deepEqual(row(rows({ workRoot: dir }), 'test-configuration.md'), {
+      name: 'test-configuration.md',
+      status: 'ok',
+      detail: 'keeps 7 run folders; scheduled runs skipped after a failed run; notifications off',
+    });
+
+    writeFileSync(file, sending('%AUTO_CHECK_EMAIL_PASSWORD%'));
+    assert.match(row(rows({ workRoot: dir }), 'test-configuration.md').detail, /notifications on fail, by email as jane\.doe@example\.com$/);
+    assert.deepEqual(row(rows({ workRoot: dir, env: {} }), 'password'), { name: 'password', status: 'warn', detail: 'from AUTO_CHECK_EMAIL_PASSWORD (unset)' });
+    assert.deepEqual(row(rows({ workRoot: dir, env: { AUTO_CHECK_EMAIL_PASSWORD: secret } }), 'password'), { name: 'password', status: 'ok', detail: 'from AUTO_CHECK_EMAIL_PASSWORD (set)' });
+
+    writeFileSync(file, sending(secret));
+    const literal = rows({ workRoot: dir });
+    assert.deepEqual(row(literal, 'password'), { name: 'password', status: 'warn', detail: 'written in the file (move it to an environment variable)' });
+    assert.ok(!formatRows(literal).includes(secret));
+    assert.notEqual(exitCodeFor(literal), exitCodeFor(rows({ workRoot: dir, probe: fakeProbe({ nodeVersion: '18.0.0' }) })));
+
+    writeFileSync(file, newTestConfig().replace('**Turn Off on Failed Test**: true', '**Turn Off on Failed Test**: maybe'));
+    assert.deepEqual(row(rows({ workRoot: dir }), 'test-configuration.md'), {
+      name: 'test-configuration.md',
+      status: 'fail',
+      detail: 'line 5: Turn Off on Failed Test takes true or false, not "maybe".',
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a task another tool installed counts as pointing at the test folder its name names under the root', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'auto-check-doctor-tasks-'));
+  try {
+    mkdirSync(path.join(root, 'automate-pr-sample-canvas'));
+    writeFileSync(path.join(root, 'automate-pr-sample-canvas', 'check.config.json'), '{}');
+    const tasks = () => [
+      { name: 'auto-check automate-pr-sample-canvas', path: '\\My Tasks\\auto-check automate-pr-sample-canvas', nextRun: null, command: '"C:\\Users\\demo-user\\scripts\\nightly.bat" automate-pr-sample-canvas' },
+    ];
+    const config = { ...defaults(), root };
+    assert.equal(row(rows({ config, probe: fakeProbe({ tasks }) }), 'tasks').status, 'ok');
+    const gone = () => [{ ...tasks()[0], name: 'auto-check automate-pr-gone', path: '\\My Tasks\\auto-check automate-pr-gone' }];
+    assert.match(row(rows({ config, probe: fakeProbe({ tasks: gone }) }), 'tasks').detail, /"\\My Tasks\\auto-check automate-pr-gone" no longer points at a test folder/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('an enabled channel without its secret is a warning', () => {

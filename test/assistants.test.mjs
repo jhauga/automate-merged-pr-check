@@ -5,6 +5,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { AssistantError, assistantFor, createAssistant } from '../lib/assistants/index.mjs';
 import { defaults } from '../lib/config.mjs';
+import { newTestConfig } from '../lib/test-config.mjs';
 
 // Stands in for an assistant CLI: records its arguments, stdin, and working
 // folder next to itself, then prints a reply.
@@ -15,7 +16,7 @@ const chunks = [];
 process.stdin.on('data', (chunk) => chunks.push(chunk));
 process.stdin.on('end', () => {
   const argv = process.argv.slice(2);
-  const env = Object.keys(process.env).filter((key) => /^(claude|mcp_)/i.test(key)).sort();
+  const env = Object.keys(process.env).filter((key) => /^(claude|mcp_|auto_check)/i.test(key)).sort();
   const record = { argv, stdin: Buffer.concat(chunks).toString('utf8'), cwd: process.cwd(), env };
   writeFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'record.json'), JSON.stringify(record));
   process.stdout.write(argv.includes('json')
@@ -195,6 +196,27 @@ test('Claude Code starts as a session of its own, without the variables a parent
   for (const name of ['CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_PID']) {
     assert.ok(!seen.includes(name), name);
   }
+});
+
+test('an assistant starts without the variables that hold notification secrets', async () => {
+  const testFolder = path.join(dir, 'secret-test');
+  mkdirSync(testFolder, { recursive: true });
+  writeFileSync(path.join(testFolder, 'test-configuration.md'), newTestConfig()
+    .replace('**Email**: null', '**Email**: %AUTO_CHECK_EMAIL%')
+    .replace('**Password**: null', '**Password**: $AUTO_CHECK_EMAIL_PASSWORD'));
+  const env = {
+    ...process.env,
+    AUTO_CHECK_EMAIL: 'jane.doe@example.com',
+    AUTO_CHECK_EMAIL_PASSWORD: 'placeholder-secret',
+    AUTO_CHECK_SMTP_PASSWORD: 'placeholder-secret',
+    AUTO_CHECK_WEBHOOK_SECRET: 'placeholder-secret',
+    AUTO_CHECK_CONFIG_DIR: dir,
+  };
+  await createAssistant('claude', { config: defaults(), fakeBinary: fake, env, testFolder }).run({ promptFile, cwd: dir });
+  assert.deepEqual(record().env.filter((name) => name.startsWith('AUTO_CHECK')), ['AUTO_CHECK_CONFIG_DIR']);
+
+  await createAssistant('claude', { config: defaults(), fakeBinary: fake, env }).run({ promptFile, cwd: dir });
+  assert.deepEqual(record().env.filter((name) => name.startsWith('AUTO_CHECK')), ['AUTO_CHECK_CONFIG_DIR', 'AUTO_CHECK_EMAIL', 'AUTO_CHECK_EMAIL_PASSWORD']);
 });
 
 test('the configured effort reaches each command through its own option', () => {

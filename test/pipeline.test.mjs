@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { defaults } from '../lib/config.mjs';
 import { DRY_RUN_FILE } from '../lib/notify/index.mjs';
 import { createPipeline } from '../lib/pipeline.mjs';
-import { runTest } from '../lib/runner.mjs';
+import { formatRun, runTest } from '../lib/runner.mjs';
+import { newTestConfig } from '../lib/test-config.mjs';
+import { runProcess } from '../lib/util/process.mjs';
 import { dayFolder } from '../lib/util/date.mjs';
 import { SLUG, fakes, makeTestFolder, readState, setMode } from './helpers/run-check.mjs';
 import { writeForm } from './helpers/form.mjs';
@@ -116,6 +118,72 @@ test('without notification channels, a failure with Find Issue on still writes i
     'Notification: none sent, no notification channel is enabled.',
   ]);
   assert.match(readFileSync(path.join(root, 'found-issue', dayFolder(new Date()), 'found-issue.md'), 'utf8'), /The check has not passed since it was written/);
+});
+
+test('a test\'s own account carries the notification, with its password read from the run\'s environment and written nowhere', async () => {
+  const { root, dir } = await makeTestFolder(base, 'account');
+  writeForm(root, { findIssue: true });
+  writeFileSync(path.join(root, 'test-configuration.md'), newTestConfig()
+    .replace('**Send Notifications**: false', '**Send Notifications**: true')
+    .replace('**Notify when Test**: null', '**Notify when Test**: fail')
+    .replace('**Email**: null', '**Email**: jane.doe@example.com')
+    .replace('**Password**: null', '**Password**: %AUTO_CHECK_EMAIL_PASSWORD%'));
+  const secret = 'correct-horse-battery-staple';
+  const sends = [];
+  const emailSender = ({ transport }) => ({ send: async (mail) => sends.push([mail.from, mail.to, transport.host, transport.auth]) });
+  const afterRun = createPipeline({ deps: { notify: { emailSender }, propose: async () => { throw new Error('Resolve Issue is off'); } } });
+  const config = defaults();
+  config.notify.email.smtp.host = 'mail.example.com';
+  setMode(dir, 'fail');
+  const result = await runTest({ testFolder: root, config, env: { AUTO_CHECK_EMAIL_PASSWORD: secret }, deps: { ...fakes().deps, afterRun } });
+  assert.ok(result.handled.lines.includes('Notification: sent by email.'), result.handled.lines.join('\n'));
+  assert.deepEqual(sends, [['jane.doe@example.com', ['jane.doe@example.com'], 'mail.example.com', { user: 'jane.doe@example.com', pass: secret }]]);
+  const written = [
+    readFileSync(result.resultFile, 'utf8'),
+    readFileSync(path.join(root, 'state.json'), 'utf8'),
+    readFileSync(path.join(root, 'found-issue', dayFolder(new Date()), 'found-issue.md'), 'utf8'),
+  ];
+  for (const text of written) assert.ok(!text.includes(secret));
+});
+
+test('a password, written in the file or named by a variable, reaches no file, no output, and not run.mjs', async () => {
+  const secret = 'correct-horse-battery-staple';
+  for (const [label, password] of [['literal', secret], ['variable', '%AUTO_CHECK_EMAIL_PASSWORD%']]) {
+    const { root, dir } = await makeTestFolder(base, `secret-${label}`);
+    writeForm(root, { findIssue: true });
+    writeFileSync(path.join(root, 'test-configuration.md'), newTestConfig()
+      .replace('**Send Notifications**: false', '**Send Notifications**: true')
+      .replace('**Notify when Test**: null', '**Notify when Test**: fail')
+      .replace('**Email**: null', '**Email**: jane.doe@example.com')
+      .replace(`**Password**: null`, `**Password**: ${password}`));
+    const config = settings();
+    let childEnv = null;
+    const runCheckProcess = (options) => {
+      childEnv = options.env;
+      return runProcess(options);
+    };
+    const logs = [];
+    const log = (line) => logs.push(line);
+    const afterRun = createPipeline({ log, deps: { propose: async () => { throw new Error('Resolve Issue is off'); } } });
+    const env = { ...process.env, AUTO_CHECK_SMTP_PASSWORD: 'placeholder-secret', ...(label === 'variable' ? { AUTO_CHECK_EMAIL_PASSWORD: secret } : {}) };
+    setMode(dir, 'fail');
+    const result = await runTest({ testFolder: root, config, env, log, deps: { ...fakes({ runCheckProcess }).deps, afterRun } });
+    assert.equal(result.outcome, 'fail');
+    assert.ok(existsSync(path.join(result.resultDir, DRY_RUN_FILE)), label);
+    assert.equal(childEnv.AUTO_CHECK_EMAIL_PASSWORD, undefined, label);
+    assert.equal(childEnv.AUTO_CHECK_SMTP_PASSWORD, undefined, label);
+    assert.ok(Object.keys(childEnv).some((key) => key.toUpperCase() === 'PATH'), label);
+    const warned = logs.some((line) => /^test-configuration\.md:15: warning: Password holds the password itself\./.test(line));
+    assert.equal(warned, label === 'literal');
+
+    const files = ['results', 'found-issue']
+      .flatMap((folder) => readdirSync(path.join(root, folder), { recursive: true }).map((name) => path.join(root, folder, name)))
+      .filter((file) => statSync(file).isFile() && /\.(json|md|txt|log)$/.test(file));
+    files.push(path.join(root, 'state.json'));
+    assert.ok(files.some((file) => file.endsWith(DRY_RUN_FILE)));
+    for (const file of files) assert.ok(!readFileSync(file, 'utf8').includes(secret), `${label}: ${file}`);
+    assert.ok(!`${formatRun(result, { cwd: root })}${logs.join('\n')}`.includes(secret), label);
+  }
 });
 
 test('with the chain on, a proposal is followed by the fix branch and the pull request text', async () => {

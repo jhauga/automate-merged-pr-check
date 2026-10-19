@@ -48,7 +48,7 @@ The tool reads the pull request, suggests a folder name from the repository and 
 auto-check --name automate-pr-demo-app --edit-context
 ```
 
-This writes only `context.md` and `.gitignore`, with the root, the folder name, and `Find Issue: true` filled in. Nothing else happens, so you can fill in the form at your own pace, hand it to someone else, or keep it in version control. When it is ready:
+This writes only `context.md`, `test-configuration.md`, and `.gitignore`, with the root, the folder name, and `Find Issue: true` filled in. Nothing else happens, so you can fill in the form at your own pace, hand it to someone else, or keep it in version control. When it is ready:
 
 ```sh
 cd <root>/automate-pr-demo-app
@@ -57,7 +57,7 @@ auto-check
 
 ### In a folder you already have
 
-Run `auto-check` in a folder that already holds a `context.md`. The tool treats that folder as the test folder, whether or not it sits under the root.
+Run `auto-check` in a folder that already holds a `context.md`. The tool treats that folder as the test folder, whether or not it sits under the root. When the folder has no `test-configuration.md` yet, it writes one with the defaults, and in a folder that already holds a check it refreshes `AGENTS.md`, `CLAUDE.md`, the tool's skills, and `schedule/run.cmd`, leaving the scheduled task itself alone.
 
 ## Folder names
 
@@ -72,6 +72,7 @@ Straight after `--name`:
 ```text
 automate-pr-demo-app/
   context.md
+  test-configuration.md
   .gitignore
 ```
 
@@ -80,6 +81,7 @@ After a check has been written:
 ```text
 automate-pr-demo-app/
   context.md                     the form
+  test-configuration.md          results kept, skip after a failure, notifications
   check.config.json              what the assistant decided
   run.mjs                        the check
   package.json                   the check's own dependencies
@@ -87,7 +89,7 @@ automate-pr-demo-app/
   AGENTS.md, CLAUDE.md           what an assistant reads here
   .claude/skills/auto-check-*    the tool's own skills, copied in for the named assistant
   baseline/                      the captures runs are compared with
-  results/<timestamp>/           one folder per run
+  results/<timestamp>/           one folder per run, the newest kept
   repo/ or worktree/             the code under test
   logs/schedule.log              what scheduled runs printed
   schedule/                      the wrapper and the task definition

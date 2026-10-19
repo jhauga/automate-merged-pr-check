@@ -47,7 +47,7 @@ That folder holds `config.json`, `.env`, and `model-cache.json`.
 | `schedule.windows.schedule`, `.startTime`, `.interactive` | `DAILY`, `03:00`, `auto` |
 | `schedule.macos.hour`, `.minute` | `3`, `0` |
 | `schedule.linux.cron`, `.unit` | `0 3 * * *`, `systemd-user` |
-| `results.keep` | `14` |
+| `results.keep` | `14`, for a test folder without `test-configuration.md` |
 | `repos.localRepo`, `.upstreamRemote`, `.originRemote`, `.branchPrefix` | empty, `upstream`, `origin`, `resolve-issue-` |
 | `assistants.claude.skills`, `.instructions`, `.permissionMode` | `.claude/skills`, `CLAUDE.md`, `bypass` |
 | `assistants.copilot.skills`, `.instructions`, `.permissionMode` | `.github/skills`, `.github/copilot-instructions.md`, `allow-all-tools` |

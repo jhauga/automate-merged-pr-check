@@ -1,7 +1,7 @@
 ---
 title: Safety
 parent: Features
-nav_order: 9
+nav_order: 10
 has_children: true
 ---
 
@@ -31,7 +31,8 @@ auto-check: A test folder cannot be created inside the auto-check repository.
 - **It never pushes to the upstream repository, and never with force.** Fix branches go only to the remote that points at your fork, and only when Remote Push is on, or you passed `--push`.
 - **It never opens an issue or a pull request** unless Make PR is on, and never before the text has been checked.
 - **It never sends a notification** unless a channel is on, and `notify.dryRun` writes messages to a file instead of sending them.
-- **It never stores a secret in a file it writes.** Passwords and webhook secrets come from environment variables, named in the settings.
+- **It never stores a secret in a file it writes.** Passwords and webhook secrets come from environment variables, named in the settings or in a test's `test-configuration.md`, and are read only when a message goes out.
+- **It never hands a secret to a check or an assistant.** `run.mjs` and every assistant start without the variables that hold notification passwords and secrets.
 - **It never leaves a desktop app changed.** A check that drives one restores the settings it touched, deletes the conversations it created, and closes the app, or starts it again without its debugging port when it was running before.
 - **It never writes outside the test folder it is working in**, except for the schedule, the lock, and your settings, each in its documented place.
 
@@ -42,6 +43,7 @@ Before the tool commits, pushes, or opens an issue or a pull request, it scans t
 - A local path under a user profile, such as a Windows `Users` folder or a POSIX home folder.
 - The machine's user name, host name, or home folder, or the name and email in the clone's git settings.
 - An email address that is not a placeholder at `example.com`, `example.org`, `example.net`, or GitHub's `noreply` domain.
+- The address or the password of the test's own notification account, from its `test-configuration.md`. The refusal names the address, but never shows the password.
 
 When it stops, the changes stay staged in the worktree so you can look at them:
 

@@ -5,7 +5,8 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { defaults } from '../lib/config.mjs';
-import { MARKER_FILE, codeRoot } from '../lib/paths.mjs';
+import { MARKER_FILE, TEST_CONFIG_FILE, codeRoot } from '../lib/paths.mjs';
+import { newTestConfig } from '../lib/test-config.mjs';
 import {
   KIT_DIR,
   KIT_IMPORT,
@@ -85,17 +86,21 @@ test('the form is prefilled before each field\'s comment, and unknown labels are
   assert.doesNotMatch(filled, /ignored/);
 });
 
-test('creating a test folder writes only the form and the ignore file', () => {
+test('creating a test folder writes only the form, the test configuration, and the ignore file', () => {
   const holder = root('create');
   const created = createTestFolder({ root: holder, name: 'automate-pr-sample-canvas', prefill: { 'Find Issue': 'true' } });
   assert.equal(created.dir, path.join(holder, 'automate-pr-sample-canvas'));
-  assert.deepEqual(created.written, [MARKER_FILE, '.gitignore']);
-  assert.deepEqual(readdirSync(created.dir).sort(), ['.gitignore', MARKER_FILE]);
+  assert.deepEqual(created.written, [MARKER_FILE, TEST_CONFIG_FILE, '.gitignore']);
+  assert.deepEqual(readdirSync(created.dir).sort(), ['.gitignore', MARKER_FILE, TEST_CONFIG_FILE]);
   assert.match(readFileSync(path.join(created.dir, MARKER_FILE), 'utf8'), /^- \*\*Find Issue\*\*: true/m);
+  assert.equal(readFileSync(path.join(created.dir, TEST_CONFIG_FILE), 'utf8'), newTestConfig());
   assert.match(readFileSync(path.join(created.dir, '.gitignore'), 'utf8'), /^results\/$/m);
+  assert.equal(beyondScaffold(created.dir).length, 0);
 
+  writeFileSync(path.join(created.dir, TEST_CONFIG_FILE), '# Test Configuration\n\n- **Keep Prior Results**: false\n');
   const again = createTestFolder({ root: holder, name: 'automate-pr-sample-canvas' });
   assert.deepEqual(again.written, []);
+  assert.match(readFileSync(path.join(created.dir, TEST_CONFIG_FILE), 'utf8'), /Keep Prior Results\*\*: false/);
   assert.throws(() => createTestFolder({ root: path.join(base, 'no-such-root'), name: 'demo' }), RootFolderError);
 });
 

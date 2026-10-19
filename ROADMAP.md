@@ -32,7 +32,7 @@ Tests, documentation, graphics, and the CI workflow stay on GitHub. `npm pack
   report.
 - macOS and Linux schedules, and the Codex adapter, are written and unit tested
   but have not run on those systems.
-- The settings schema and the form may still change.
+- The settings schema and the two forms of a test folder may still change.
 
 ### beta: 1.0.0-beta.x
 
@@ -46,8 +46,8 @@ Tests, documentation, graphics, and the CI workflow stay on GitHub. `npm pack
 
 ### rc: 1.0.0-rc.x
 
-- The settings schema and the `context.md` form frozen. A change after this
-  needs a migration note.
+- The settings schema, the `context.md` form, and `test-configuration.md`
+  frozen. A change after this needs a migration note.
 - Documentation complete: every command, option, and setting on the site, each
   feature with its quickstart and cheatsheet.
 - `npm pack --dry-run` and an install from the packed tarball into a clean

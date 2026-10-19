@@ -7,8 +7,9 @@ import { defaults } from '../lib/config.mjs';
 import { readContext } from '../lib/context.mjs';
 import { GenerateError, fenceFor, generateCheck, sparsePathsFor } from '../lib/generate.mjs';
 import { captureBaseline, installCheck, simulateFailure } from '../lib/harness.mjs';
-import { codeRoot } from '../lib/paths.mjs';
+import { TEST_CONFIG_FILE, codeRoot } from '../lib/paths.mjs';
 import { intake } from '../lib/pr.mjs';
+import { newTestConfig } from '../lib/test-config.mjs';
 import { KIT_IMPORT } from '../lib/test-folder.mjs';
 import { fakeGitHub } from './helpers/fake-github.mjs';
 import { writeSampleCheck } from './helpers/sample-check.mjs';
@@ -178,6 +179,7 @@ test('the assistant writes the check, the harness verifies it, and the baseline 
   assert.deepEqual(result.baseline.result.baseline, { page: 'captured' });
   assert.ok(existsSync(path.join(dir, 'baseline', 'greeting.txt')));
   assert.equal(JSON.parse(readFileSync(path.join(dir, 'state.json'), 'utf8')).storedConversation, null);
+  assert.equal(readFileSync(path.join(dir, TEST_CONFIG_FILE), 'utf8'), newTestConfig());
   assert.ok(logs.includes('Running the check with black captures, which must fail'));
 });
 

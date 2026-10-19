@@ -108,7 +108,19 @@ Open `context.md` and turn on as much of the chain as you want:
   - **Make PR**: false
 ```
 
-Then check the form reads the way you meant:
+Then decide how the test behaves on its schedule, in `test-configuration.md`. To hear about a failure by email:
+
+```md
+- **Send Notifications**: true
+  - **Notify when Test**: fail
+  - **Account Configuration**:
+    - **Email**: jane.doe@example.com
+    - **Password**: %AUTO_CHECK_EMAIL_PASSWORD%
+```
+
+Put `AUTO_CHECK_EMAIL_PASSWORD=` with the password in the test folder's `.env`. The other settings already keep seven runs and pause the schedule after a failure.
+
+Then check both forms read the way you meant:
 
 ```sh
 auto-check context validate
@@ -117,6 +129,7 @@ auto-check context validate
 ## Next
 
 - [The context.md form](features/context-form/index.md) for every field.
+- [test-configuration.md](features/test-configuration/index.md) for results, skipped runs, and notifications.
 - [Running and scheduling](features/running-and-scheduling/index.md) for what runs when.
 - [The failure pipeline](features/failure-pipeline/index.md) for everything after a failing run.
 - [Cheatsheet](CHEATSHEET.md) when you just need the command.

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
@@ -10,9 +10,14 @@ import {
   applySchedule,
   display,
   listInstalled,
+  nextRuns,
   parseWindowsTasks,
   planSchedule,
+  refreshScheduleWrapper,
+  staggerFor,
   staggerMinutes,
+  taskBelongsTo,
+  taskFolderName,
   taskTestFolder,
 } from '../lib/schedule/index.mjs';
 import { cronToOnCalendar, shiftCron } from '../lib/schedule/linux.mjs';
@@ -66,7 +71,7 @@ test('Windows: a wrapper script and one imported task, signed in for a check tha
   const [wrapper, task] = plan.files;
   assert.equal(wrapper.path, `${folder}\\schedule\\run.cmd`);
   assert.ok(wrapper.data.includes(`\r\ncd /d "${folder}" || exit /b 2\r\n`));
-  assert.ok(wrapper.data.includes(`\r\n"C:\\Program Files\\nodejs\\node.exe" "${toolBin}" run "${folder}" %* < NUL >> "logs\\schedule.log" 2>&1\r\n`));
+  assert.ok(wrapper.data.includes(`\r\n"C:\\Program Files\\nodejs\\node.exe" "${toolBin}" run "${folder}" --scheduled %* < NUL >> "logs\\schedule.log" 2>&1\r\n`));
   assert.ok(wrapper.data.includes('if not exist "logs" mkdir "logs"'));
   assert.doesNotMatch(wrapper.data.replace(/\r\n/g, ''), /\n/);
 
@@ -134,7 +139,7 @@ test('macOS: one launchd agent per step, with escaped values', () => {
   assert.ok(start.includes('<string>/Users/demo-user/Acme &amp; Co/'));
   assert.ok(start.includes('<key>StandardOutPath</key>'));
   assert.match(start, /<key>Hour<\/key>\n\s+<integer>3<\/integer>/);
-  assert.match(start, /<string>--phase<\/string>\n\s+<string>start<\/string>/);
+  assert.match(start, /<string>run<\/string>\n\s+<string>[^<]+<\/string>\n\s+<string>--scheduled<\/string>\n\s+<string>--phase<\/string>\n\s+<string>start<\/string>\n\s+<\/array>/);
   assert.match(collect, /<key>Hour<\/key>\n\s+<integer>4<\/integer>/);
   assert.deepEqual(plan.steps.install.map((step) => display(step.run)), [
     `launchctl bootout gui/501/auto-check.${NAME}`,
@@ -149,7 +154,7 @@ test('Linux: systemd user timers from the cron expression', () => {
   const plan = planSchedule({ testFolder: folder, check: check(), platform: 'linux', node: '/usr/bin/node', home: '/home/demo-user' });
   const [service, timer] = plan.files;
   assert.equal(service.path, `/home/demo-user/.config/systemd/user/auto-check-${NAME}.service`);
-  assert.ok(service.data.includes(`\nExecStart="/usr/bin/node" "${toolBin}" run "${folder}" \n`));
+  assert.ok(service.data.includes(`\nExecStart="/usr/bin/node" "${toolBin}" run "${folder}" --scheduled\n`));
   assert.ok(service.data.includes(`\nStandardOutput=append:${folder}/logs/schedule.log\n`));
   assert.match(service.data, /\nTimeoutStartSec=45min\n/);
   assert.match(timer.data, /\nOnCalendar=\*-\*-\* 03:00:00\n/);
@@ -186,8 +191,8 @@ test('Linux: crontab lines replace the test\'s old lines and keep everyone else\
   assert.equal(written[0], 'MAILTO=""');
   assert.ok(written[1].includes('automate-pr-other'));
   assert.equal(written.length, 6);
-  assert.ok(written[3].startsWith(`0 3 * * * cd "${folder}" && mkdir -p logs && "/usr/bin/node" "${toolBin}" run "${folder}" --phase start < /dev/null >> `));
-  assert.match(written[5], /^0 4 \* \* \* .* --phase collect < \/dev\/null >> /);
+  assert.ok(written[3].startsWith(`0 3 * * * cd "${folder}" && mkdir -p logs && "/usr/bin/node" "${toolBin}" run "${folder}" --scheduled --phase start < /dev/null >> `));
+  assert.match(written[5], /^0 4 \* \* \* .* --scheduled --phase collect < \/dev\/null >> /);
 
   const removal = fakeExec((command) => ({ status: 0, stdout: command.args[0] === '-l' ? `${written.join('\n')}\n` : '', stderr: '' }));
   applySchedule('remove', plan, { exec: removal.exec });
@@ -247,7 +252,7 @@ test('Windows status reads the task\'s state from schtasks', () => {
   assert.ok(readFileSync(path.join(codeRoot, 'templates', 'schedule', 'windows.cmd'), 'utf8').includes('\r\n'));
 });
 
-test('a new task starts after every auto-check task the machine already holds', () => {
+test('a task starts at the earliest time that keeps clear of every other test, and a reinstall keeps its own', () => {
   const header = '"HostName","TaskName","Next Run Time","Status","Logon Mode","Last Run Time","Last Result","Author","Task To Run"';
   const row = (name, when, command) => `"DEMO-PC","\\auto-check ${name}","${when}","Ready","Interactive only","N/A","1","Jane Doe","${command}"`;
   const first = 'C:\\auto-checks\\automate-pr-first';
@@ -270,11 +275,81 @@ test('a new task starts after every auto-check task the machine already holds', 
   assert.equal(staggerMinutes({ startTime: '03:00', tasks: tasks.slice(0, 1) }), 30);
   assert.equal(staggerMinutes({ startTime: '03:00', tasks: [] }), 0);
   assert.equal(staggerMinutes({ startTime: '05:00', tasks }), 0);
+  const at = (hours, minutes) => ({ nextRun: new Date(2026, 9, 19, hours, minutes) });
+  assert.equal(staggerMinutes({ startTime: '03:00', tasks: [at(3, 30)] }), 0);
+  assert.equal(staggerMinutes({ startTime: '03:00', tasks: [at(3, 0), at(4, 0)] }), 30);
+  assert.equal(staggerMinutes({ startTime: '00:00', tasks: [at(23, 50)] }), 30);
 
+  const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+  const daily = { schedule: { windows: { startTime: '03:00' } } };
+  assert.equal(staggerFor({ check: daily, testFolder: first, tasks, same }), 0);
+  assert.equal(staggerFor({ check: daily, testFolder: second.toUpperCase(), tasks, same }), 30);
+  assert.equal(staggerFor({ check: daily, testFolder: 'C:\\auto-checks\\automate-pr-third', tasks, same }), 60);
+  assert.equal(staggerFor({ check: {}, testFolder: 'C:\\auto-checks\\automate-pr-third', tasks: [], same }), 0);
+
+  assert.deepEqual(tasks.map((task) => task.path), ['\\auto-check automate-pr-first', '\\auto-check automate-pr-second']);
   const listed = listInstalled({ platform: 'win32', exec: () => ({ status: 0, stdout: text, stderr: '' }) });
   assert.equal(listed.length, 2);
   assert.deepEqual(listInstalled({ platform: 'linux' }), []);
   assert.deepEqual(listInstalled({ platform: 'win32', exec: () => ({ status: 1, stdout: '', stderr: 'no tasks' }) }), []);
+});
+
+test('a task moved into a Task Scheduler folder is found there and replaced, read, paused, and removed in place', () => {
+  const header = '"HostName","TaskName","Next Run Time","Status","Logon Mode","Last Run Time","Last Result","Author","Task To Run"';
+  const folder = `C:\\Users\\demo-user\\auto-checks\\${NAME}`;
+  const text = [
+    header,
+    `"DEMO-PC","\\My Tasks\\auto-check ${NAME}","1/2/2026 3:30:00 AM","Ready","Interactive only","N/A","0","Jane Doe",""${folder}\\schedule\\run.cmd" "`,
+    header,
+    '"DEMO-PC","\\My Tasks\\Nightly backup","1/2/2026 1:00:00 AM","Ready","Interactive only","N/A","0","Jane Doe","backup.exe"',
+  ].join('\r\n');
+  const installed = parseWindowsTasks(text);
+  assert.deepEqual(installed.map(({ name, path: full }) => [name, full]), [[`auto-check ${NAME}`, `\\My Tasks\\auto-check ${NAME}`]]);
+  assert.equal(taskTestFolder(installed[0].command), folder);
+
+  const plan = planSchedule({ testFolder: folder, check: check(), platform: 'win32', node: 'node.exe', now: NOW, elevated: false, installed });
+  const moved = `\\My Tasks\\auto-check ${NAME}`;
+  assert.deepEqual(plan.steps.install[0].run.args, ['/Create', '/F', '/TN', moved, '/XML', plan.files[1].path]);
+  assert.deepEqual(plan.steps.status[0].run.args, ['/Query', '/TN', moved, '/V', '/FO', 'LIST']);
+  assert.deepEqual(plan.steps.pause[0].run.args, ['/Change', '/TN', moved, '/DISABLE']);
+  assert.deepEqual(plan.steps.remove[0].run.args, ['/Delete', '/F', '/TN', moved]);
+  assert.equal(staggerFor({ check: check(), testFolder: folder, tasks: installed, same: (a, b) => a === b }), 0);
+  assert.deepEqual(nextRuns(plan, installed), [{ name: moved, at: '2026-01-02T03:30:00' }]);
+  assert.deepEqual(nextRuns(plan, []), [{ name: moved, at: '2026-01-02T03:00:00' }]);
+});
+
+test('a task another tool installed is recognized by its name', () => {
+  const header = '"HostName","TaskName","Next Run Time","Status","Logon Mode","Last Run Time","Last Result","Author","Task To Run"';
+  const text = [
+    header,
+    `"DEMO-PC","\\My Tasks\\auto-check ${NAME}","1/2/2026 3:00:00 AM","Ready","Interactive only","N/A","0","Jane Doe",""C:\\Users\\demo-user\\scripts\\nightly.bat" ${NAME}"`,
+    '"DEMO-PC","\\auto-check automate-pr-other","1/2/2026 3:30:00 AM","Ready","Interactive only","N/A","0","Jane Doe","C:\\auto-checks\\automate-pr-other\\schedule\\run.cmd"',
+  ].join('\r\n');
+  const tasks = parseWindowsTasks(text);
+  assert.equal(taskTestFolder(tasks[0].command), null);
+  assert.equal(taskFolderName(tasks[0].name), NAME);
+  assert.equal(taskFolderName('auto-check automate-pr-other collect'), 'automate-pr-other');
+  assert.equal(taskFolderName('Nightly backup'), null);
+  const own = path.join(base, 'auto-checks', NAME);
+  assert.equal(taskBelongsTo(tasks[0], own), true);
+  assert.equal(taskBelongsTo(tasks[1], own), false);
+  assert.equal(staggerFor({ check: check(), testFolder: own, tasks }), 0);
+  assert.equal(staggerFor({ check: check(), testFolder: path.join(base, 'auto-checks', 'automate-pr-third'), tasks }), 60);
+});
+
+test('an existing schedule wrapper is refreshed without touching any task', { skip: process.platform !== 'win32' && 'Windows only' }, () => {
+  const own = path.join(base, 'wrapper', NAME);
+  mkdirSync(own, { recursive: true });
+  const options = { testFolder: own, check: check(), platform: 'win32', node: 'node.exe' };
+  assert.equal(refreshScheduleWrapper(options), false);
+  const wrapper = path.join(own, 'schedule', 'run.cmd');
+  mkdirSync(path.dirname(wrapper), { recursive: true });
+  writeFileSync(wrapper, '@echo off\r\n"node.exe" "auto-check.mjs" run "old" %*\r\n');
+  assert.equal(refreshScheduleWrapper(options), true);
+  assert.match(readFileSync(wrapper, 'utf8'), / run "[^"]+" --scheduled %\* < NUL >> /);
+  assert.equal(refreshScheduleWrapper(options), false);
+  assert.equal(refreshScheduleWrapper({ ...options, platform: 'linux' }), false);
+  assert.deepEqual(readdirSync(path.dirname(wrapper)), ['run.cmd']);
 });
 
 test('a staggered plan moves the first run, on every platform', () => {

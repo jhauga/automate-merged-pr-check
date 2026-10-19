@@ -10,6 +10,7 @@ This folder is one auto-check test: a scheduled check that keeps proving a merge
 - Never push, open a pull request or an issue, or change a git remote unless the prompt asks for it.
 - The code under test is a clone auto-check rebuilds before every run. Change nothing in it, and never commit there.
 - Anything that leaves the machine, such as a commit message, a pushed file, issue text, or a pull request description, follows the writing rules below and contains no local path, account name, machine name, or email address.
+- Never read, copy, or print the Account Configuration values of `test-configuration.md`, or anything in `.env`. They hold the email account this test notifies from.
 
 ## Writing rules
 
@@ -22,11 +23,12 @@ This folder is one auto-check test: a scheduled check that keeps proving a merge
 | Path | What it is |
 | --- | --- |
 | `context.md` | The form that describes this test. It decides which follow-up steps a failure gets. |
+| `test-configuration.md` | How many results this test keeps, whether a scheduled run is skipped after a failed one, and whom it notifies. |
 | `check.config.json` | The check's settings: the pull request, the code under test, the layers, and the comparison. |
 | `run.mjs` | The check itself. `node run.mjs --out results/manual` runs it by hand. |
 | `README.md` | What the check proves, and how to read its result. |
 | `.auto-check/check-kit.mjs` | The check kit `run.mjs` imports. auto-check refreshes it on every run; never edit it. |
 | `baseline/` | The accepted captures every run is compared with. |
-| `results/` | One folder per run, newest last. `result.json` holds the outcome. |
+| `results/` | One folder per run, newest last, kept as `test-configuration.md` says. `result.json` holds the outcome. |
 
 Run `auto-check --help` for the commands this folder accepts.

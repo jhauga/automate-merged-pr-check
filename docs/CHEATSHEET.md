@@ -13,11 +13,11 @@ Everything the tool takes, in tables. Each feature has a cheatsheet of its own u
 | Command | What it does |
 | --- | --- |
 | `auto-check <pr-url>` | Make a test folder for a pull request and write its check. |
-| `auto-check` | Inside a test folder: validate the form, then write the check or print the status. |
+| `auto-check` | Inside a test folder: write a missing `test-configuration.md`, validate both forms, then write the check or print the status. |
 | `auto-check -n, --name <folder>` | Make a test folder and its form, and stop there. |
-| `auto-check run [<folder>]` | Run the check once. |
+| `auto-check run [<folder>]` | Run the check once. A run you start yourself always runs. |
 | `auto-check inspect <pr-url>` | Print what the tool reads from a pull request. |
-| `auto-check context validate [<path>]` | Check a form, rule by rule. |
+| `auto-check context validate [<path>]` | Check a form, rule by rule: `context.md`, `test-configuration.md`, or both without a path. |
 | `auto-check schedule install\|remove\|status [<folder>]` | Manage the schedule of one test. |
 | `auto-check notify test` | Send a sample on every enabled channel. |
 | `auto-check resolve [<folder>]` | Work on the open failure of one test. |
@@ -47,6 +47,7 @@ Everything the tool takes, in tables. Each feature has a cheatsheet of its own u
 | `--phase start\|collect` | `run` | One half of a two-phase check. |
 | `--simulate-fail <png>\|black` | `run` | Replace every capture, to try the failure path. |
 | `--no-notify` | `run` | Send no notifications for this run. |
+| `--scheduled` | `run` | Run the way the schedule does: follow Turn Off on Failed Test in `test-configuration.md`. |
 | `--propose`, `--issue`, `--pr` | `resolve` | Which follow-up step to take. |
 | `--push` | `resolve` | Push the fix branch to your fork. |
 | `--json` | `inspect` | Print the summary as JSON. |
@@ -55,27 +56,28 @@ Everything the tool takes, in tables. Each feature has a cheatsheet of its own u
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Pass, or the command finished. |
+| 0 | Pass, the command finished, or a scheduled run was skipped after a failed one. |
 | 1 | The check failed: an assertion, or a comparison with the baseline. |
 | 2 | The tool could not do the work, such as a clone it could not fetch. |
 | 3 | The guard refused: a test folder in the wrong place. |
-| 4 | Bad arguments, or a `context.md` that does not pass. |
+| 4 | Bad arguments, or a `context.md` or `test-configuration.md` that does not pass. |
 
 ## A test folder
 
 | Path | What it holds |
 | --- | --- |
 | `context.md` | The form. The marker file that makes this a test folder. |
+| `test-configuration.md` | Results kept, skipping scheduled runs after a failure, and notifications. |
 | `check.config.json` | The pull request, the classification, the layers, and the comparison. |
 | `run.mjs` | The check. Plain Node, runnable on its own. |
 | `.auto-check/check-kit.mjs` | The copy of the check kit the check imports. |
 | `baseline/` | The captures every run is compared with. |
-| `results/<timestamp>/` | One folder per run, with `result.json` and the captures. |
+| `results/<timestamp>/` | One folder per run, with `result.json` and the captures. The newest are kept. |
 | `found-issue/MM-DD-YYYY/` | Failure reports. |
 | `proposed-solution/MM-DD-YYYY/` | Plans that fix them, and the resolve files. |
 | `repo/` or `worktree/` | The code under test. |
 | `logs/schedule.log` | What the scheduled runs printed. |
-| `schedule/` | The wrapper and the task definition. |
+| `schedule/` | The wrapper, which runs `auto-check run --scheduled`, and the task definition. |
 | `state.json` | Last run, last pass, open failure, stored conversation. |
 | `AGENTS.md`, `CLAUDE.md`, `.claude/skills/auto-check-*` | What an assistant reads in this folder. |
 
@@ -98,6 +100,18 @@ Everything the tool takes, in tables. Each feature has a cheatsheet of its own u
 | Remote Push | Flag | The branch is pushed to your fork. |
 | Make PR | Flag | The pushed branch becomes a pull request. |
 
+## test-configuration.md
+
+| Field | Default | Value |
+| --- | --- | --- |
+| Turn Off on Failed Test | `true` | Skip a scheduled run while the newest run failed. |
+| Keep Prior Results | `true` | `false` keeps only the newest run folder. |
+| Number of Test | `7` | How many run folders to keep, oldest deleted first. |
+| Send Notifications | `false` | `true` notifies as the items below say. |
+| Notify when Test | none | `pass`, `fail`, or `both`. |
+| Email | `null` | The account's address, or a variable that holds it. `null` uses your settings' channels. |
+| Password | `null` | The variable that holds the account's password, such as `%AUTO_CHECK_EMAIL_PASSWORD%`. |
+
 Flags take `true`, `false`, `yes`, or `no`, in any case. Absent reads as false. Every flag needs the one above it.
 
 ## Settings
@@ -114,7 +128,7 @@ Flags take `true`, `false`, `yes`, or `no`, in any case. Absent reads as false. 
 | `notify.dryRun` | `false` | Write notifications to the result folder instead of sending them. |
 | `notify.email.*`, `notify.sms.*`, `notify.webhook.*` | off | The channels. |
 | `schedule.windows.*`, `schedule.macos.*`, `schedule.linux.*` | 03:00 daily | When checks run. |
-| `results.keep` | `14` | How many result folders each test keeps. |
+| `results.keep` | `14` | How many run folders a test without `test-configuration.md` keeps. |
 | `repos.localRepo` | empty | Clone used when a form names none. |
 | `repos.upstreamRemote`, `originRemote`, `branchPrefix` | `upstream`, `origin`, `resolve-issue-` | Remotes and branch names for fixes. |
 | `assistants.<name>.skills`, `.instructions`, `.permissionMode` | per assistant | Where that assistant reads from, and how much it may do. |
@@ -136,6 +150,7 @@ auto-check config unset models.claude.effort
 | `VISUAL`, `EDITOR` | The editor `--edit-context` opens. |
 | `AUTO_CHECK_SMTP_PASSWORD` | Named by `notify.email.smtp.passwordEnv`. |
 | `AUTO_CHECK_WEBHOOK_SECRET` | Named by `notify.webhook.secretEnv`. |
+| `AUTO_CHECK_EMAIL_PASSWORD` | Named by Password in a `test-configuration.md`, and kept in that test folder's `.env`. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Keeps Claude Code signed in for scheduled runs. |
 
 ## Everyday lines
@@ -146,7 +161,8 @@ auto-check --name automate-pr-demo-app --edit-context  # make the folder, fill t
 auto-check                                             # status, or write the check
 auto-check run                                         # run it now
 auto-check run --simulate-fail black                   # try the failure path
-auto-check context validate                            # check the form
+auto-check run --scheduled                             # run the way the schedule does
+auto-check context validate                            # check both forms
 auto-check schedule status                             # when it runs next
 auto-check resolve --propose                           # ask for a plan that fixes it
 auto-check resolve --issue --dry-run                   # see every command a fix would run

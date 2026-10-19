@@ -20,7 +20,7 @@ auto-check doctor                            # what the machine is missing
 auto-check config set root ~/auto-checks
 auto-check config set assistant claude
 auto-check config set models.claude.generate opus
-auto-check config set results.keep 30
+auto-check config set results.keep 30           # tests without test-configuration.md
 auto-check config set repos.localRepo ~/clones/demo-app
 ```
 

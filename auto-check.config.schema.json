@@ -41,7 +41,7 @@
       }
     },
     "notify": {
-      "description": "Who hears about a check result, and when.",
+      "description": "Who hears about a check result, and when. A test's test-configuration.md overrides these for that test.",
       "type": "object",
       "additionalProperties": false,
       "required": ["dryRun", "onFail", "onError", "onPass", "onRecover", "email", "sms", "webhook"],
@@ -160,13 +160,13 @@
       }
     },
     "results": {
-      "description": "Result folders each test keeps under its results folder.",
+      "description": "Run folders each test keeps under its results folder, when its test-configuration.md does not say.",
       "type": "object",
       "additionalProperties": false,
       "required": ["keep"],
       "properties": {
         "keep": {
-          "description": "How many of the newest result folders to keep. The folders of the last pass and the last run are always kept.",
+          "description": "How many run folders a test keeps when its test-configuration.md does not say. Baseline, simulated, and generate-try folders are never counted or deleted.",
           "type": "integer",
           "minimum": 1,
           "maximum": 1000

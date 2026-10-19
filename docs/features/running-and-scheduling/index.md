@@ -1,7 +1,7 @@
 ---
 title: Running and scheduling
 parent: Features
-nav_order: 5
+nav_order: 6
 has_children: true
 ---
 
@@ -20,7 +20,16 @@ auto-check run
 2. Records the machine fingerprint: the operating system, Node.js, the browser, the command-line tools, the desktop app's version, and a hash of the installed copy of the subject.
 3. Runs `run.mjs` with the check's timeout, holding the machine-wide lock while it drives a desktop app.
 4. Compares the captures with `baseline/`, as `compare.strategy` says.
-5. Writes `results/<timestamp>/result.json`, updates `state.json`, and hands a failure to [the failure pipeline](../failure-pipeline/index.md).
+5. Writes `results/<timestamp>/result.json`, updates `state.json`, and deletes the oldest run folders past the number [test-configuration.md](../test-configuration/index.md) keeps.
+6. Notifies as `test-configuration.md` says, and hands a failure to [the failure pipeline](../failure-pipeline/index.md).
+
+A run given `--scheduled`, as every schedule does, first reads the newest finished run. When that run failed and Turn Off on Failed Test is `true` in `test-configuration.md`, it stops there, writes nothing, and exits 0:
+
+```text
+automate-pr-demo-app: skipped. The last run failed (results/2026-02-03T03-00-12/result.json), and Turn Off on Failed Test is true in test-configuration.md. Fix the cause, then run auto-check run here; scheduled runs resume after a run that does not fail.
+```
+
+A run you start yourself, without `--scheduled`, always runs, and when it does not fail the schedule goes ahead again.
 
 ```text
 automate-pr-demo-app: pass
@@ -32,7 +41,7 @@ automate-pr-demo-app: pass
 
 | Exit code | Meaning |
 | --- | --- |
-| 0 | The check passed, or the first phase of a two-phase check started. |
+| 0 | The check passed, the first phase of a two-phase check started, or a scheduled run was skipped after a failed one. |
 | 1 | The check failed: an assertion, or a comparison with the baseline. |
 | 2 | The check could not run, such as a missing browser or a clone that could not be fetched. |
 
@@ -56,7 +65,9 @@ auto-check schedule remove
 auto-check schedule install --dry-run
 ```
 
-Every scheduled run starts `auto-check run` in the test folder, with its standard input closed, and appends its output to `logs/schedule.log`. The schedule holds the full path of the tool and of Node.js, so after you move a folder or install Node.js somewhere else, run `auto-check schedule install` again.
+Every scheduled run starts `auto-check run --scheduled` in the test folder, with its standard input closed, and appends its output to `logs/schedule.log`. The schedule holds the full path of the tool and of Node.js, so after you move a folder or install Node.js somewhere else, run `auto-check schedule install` again.
+
+Installing again replaces the test's task where it is, at the time it already has while that time is still clear of the other tests.
 
 ## When checks run
 
@@ -74,7 +85,7 @@ A check whose `runMode` is `two-step` gets two scheduled runs: `--phase start` a
 
 ### Staggering
 
-Several tests on one machine would otherwise all start at 03:00 and fight over the browser, the desktop app, and the network. Each new schedule is offset from the ones already installed, in half-hour steps, so the second test starts at 03:30, the third at 04:00, and so on. `auto-check schedule status` prints the time each one actually got.
+Several tests on one machine would otherwise all start at 03:00 and fight over the browser, the desktop app, and the network. A schedule starts at the earliest time, from the start time on in half-hour steps, that is at least half an hour from every other test's task. So the second test starts at 03:30, the third at 04:00, and a gap left by a removed test is filled again. A test's own tasks never count against it, so installing its schedule again keeps its time. `auto-check schedule status` prints the time each one actually got.
 
 ### The machine-wide lock
 
@@ -90,7 +101,7 @@ A lock left behind by a run that was killed goes stale and is taken over, so a c
 
 ## Windows
 
-The tool writes `schedule/run.cmd` and a Task Scheduler definition beside it, then imports the task with `schtasks /Create /XML`. The task is named `auto-check <folder>`, and `auto-check <folder> collect` for the second phase of a two-phase check. Importing a definition, rather than creating the task from the command line, sets these:
+The tool writes `schedule/run.cmd` and a Task Scheduler definition beside it, then imports the task with `schtasks /Create /XML`. The task is named `auto-check <folder>`, and `auto-check <folder> collect` for the second phase of a two-phase check. `run.cmd` runs `auto-check run --scheduled` and passes on any arguments it is given, such as `--phase collect`. Importing a definition, rather than creating the task from the command line, sets these:
 
 - A run missed while the computer was off or asleep starts as soon as it is back.
 - Runs start and continue on battery power.
@@ -104,6 +115,10 @@ The tool writes `schedule/run.cmd` and a Task Scheduler definition beside it, th
 | `auto` (default) | While you are signed in. A check that drives no desktop app can run without a session when `schedule install` is run from an elevated prompt. |
 | `always` | While you are signed in. |
 | `never` | Whether or not anyone is signed in. Windows allows this only from an elevated prompt, and a check that drives a desktop app cannot use it. |
+
+A task you move into a Task Scheduler folder of your own stays there: `schedule install`, `status`, and `remove` find it by its name in any folder and act on it where it is.
+
+A task of your own can run the test instead, as long as it calls the test folder's `schedule\run.cmd`. That run is a scheduled one, so Turn Off on Failed Test applies to it. Name the task `auto-check <folder>` and `auto-check doctor` and staggering know which test it belongs to. A bare `auto-check` in the test folder refreshes `run.cmd` and leaves your task alone; `auto-check schedule install` would replace the task with the tool's own.
 
 Verified on Windows 11 with Task Scheduler.
 
@@ -123,4 +138,6 @@ Not yet run on Linux: the files and the commands are covered by unit tests only.
 
 ## Keeping results
 
-Each run keeps its folder under `results/`. `results.keep` sets how many of the newest to keep, 14 by default. The folders of the last pass and the last run are always kept, whatever that number says.
+Each run keeps its folder under `results/`. After a run, the oldest run folders past the count are deleted: Keep Prior Results and Number of Test in [test-configuration.md](../test-configuration/index.md) set the count, 7 in a new test folder, and `results.keep` sets it for a test folder without that file, 14 by default.
+
+Only run folders count. Baseline, simulated, and generate-try folders, and any folder you name yourself, are never deleted. The folder of an open failure, and the start of a two-step run waiting to be collected, are kept past the count until the tool no longer reads them.

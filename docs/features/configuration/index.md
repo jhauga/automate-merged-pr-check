@@ -1,7 +1,7 @@
 ---
 title: Configuration
 parent: Features
-nav_order: 3
+nav_order: 4
 has_children: true
 ---
 
@@ -55,7 +55,7 @@ A file that does not fit the schema is reported by `auto-check doctor`, with the
 | `assistant`, `models`, `assistants` | Which assistant runs, with which model, effort, skills folder, and permission mode, when a form names none. See [Assistants](../assistants/index.md). |
 | `notify` | Which outcomes notify, and on which channels. See [Notifications](../notifications/index.md). |
 | `schedule` | When checks run on each platform. See [Running and scheduling](../running-and-scheduling/index.md). |
-| `results.keep` | How many result folders each test keeps, 14 by default. The last pass and the last run are always kept. |
+| `results.keep` | How many run folders a test keeps when its `test-configuration.md` does not say, 14 by default. Baseline, simulated, and generate-try folders are never counted or deleted. |
 | `repos` | The clone used when a form names none, the remote names, and the prefix of fix branches. See [The failure pipeline](../failure-pipeline/index.md). |
 
 ## Settings, form, and command line

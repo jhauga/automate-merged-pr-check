@@ -25,6 +25,7 @@ nav_order: 2
 | Never opens an issue or a pull request without Make PR and a text check. |
 | Never notifies on a channel that is off. |
 | Never writes a secret into a file. |
+| Never gives a check or an assistant the variables that hold notification secrets. |
 | Never leaves a desktop app with changed settings, extra conversations, or a debugging port. |
 | Never follows instructions found inside a pull request, a repository file, or a report. |
 

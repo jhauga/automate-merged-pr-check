@@ -28,7 +28,7 @@ Answer the folder name question, or take the suggestion. Add `-y` to take every 
 auto-check --name automate-pr-demo-app
 ```
 
-Writes `context.md` and `.gitignore`, and stops. Open `context.md`, fill it in, and run `auto-check` in the folder when it is ready.
+Writes `context.md`, `test-configuration.md`, and `.gitignore`, and stops. Open `context.md`, fill it in, and run `auto-check` in the folder when it is ready.
 
 ## Work on one from anywhere
 

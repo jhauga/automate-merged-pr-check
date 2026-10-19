@@ -63,11 +63,31 @@ cat results/*/result.json | tail -40
 
 | Symptom | Likely cause |
 | --- | --- |
+| The log says `skipped. The last run failed` | Turn Off on Failed Test is `true` in `test-configuration.md`. Fix the cause and run `auto-check run`; the schedule goes ahead after a run that does not fail. |
 | The task says it never ran | The machine was off, and the catch-up run has not started yet. |
 | It ran and exited 2 | The clone could not be fetched, or the browser is missing. Run `auto-check doctor`. |
 | A `hostApp` layer stopped with an error | Nobody was signed in. Keep the task interactive, or run it when you are. |
 | Two checks collided | They did not: the second waited for the machine-wide lock. Look at the second one's log. |
 | Everything broke after moving the folder | The schedule holds full paths. Run `auto-check schedule install` again. |
+
+## Run it the way the schedule does
+
+```sh
+auto-check run --scheduled
+```
+
+Skipped when the newest run failed and `test-configuration.md` says to turn off after a failure. Without `--scheduled`, the run always goes ahead.
+
+## Keep fewer results
+
+In `test-configuration.md`:
+
+```md
+- **Keep Prior Results**: true
+  - **Number of Test**: 3
+```
+
+The next run deletes all but the three newest run folders. Baseline and simulated folders stay.
 
 ## Run it by hand, without the tool
 
